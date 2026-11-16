@@ -1,0 +1,533 @@
+{
+  "schemaVersion": 1,
+  "chartId": "neon-pulse-normal",
+  "chartVersion": 1,
+  "songId": "neon-pulse",
+  "difficulty": "Normal",
+  "audioDurationMs": 36000,
+  "approachMs": 1800,
+  "notes": [
+    {
+      "id": 1,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 3000
+    },
+    {
+      "id": 2,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 3250
+    },
+    {
+      "id": 3,
+      "type": "hold",
+      "lane": 2,
+      "timeMs": 3750,
+      "endMs": 4250
+    },
+    {
+      "id": 4,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 4250
+    },
+    {
+      "id": 5,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 4750
+    },
+    {
+      "id": 6,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 5000
+    },
+    {
+      "id": 7,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 5250
+    },
+    {
+      "id": 8,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 5750
+    },
+    {
+      "id": 9,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 6250
+    },
+    {
+      "id": 10,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 6750,
+      "chordId": 1
+    },
+    {
+      "id": 11,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 6750,
+      "chordId": 1
+    },
+    {
+      "id": 12,
+      "type": "chain",
+      "lane": 0,
+      "timeMs": 7000,
+      "chainId": 1
+    },
+    {
+      "id": 13,
+      "type": "chain",
+      "lane": 2,
+      "timeMs": 7250,
+      "chainId": 1
+    },
+    {
+      "id": 14,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 7750
+    },
+    {
+      "id": 15,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 8250
+    },
+    {
+      "id": 16,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 8750
+    },
+    {
+      "id": 17,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 9000
+    },
+    {
+      "id": 18,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 9250
+    },
+    {
+      "id": 19,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 9750
+    },
+    {
+      "id": 20,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 10250
+    },
+    {
+      "id": 21,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 10750
+    },
+    {
+      "id": 22,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 11000
+    },
+    {
+      "id": 23,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 11250
+    },
+    {
+      "id": 24,
+      "type": "hold",
+      "lane": 3,
+      "timeMs": 11750,
+      "endMs": 12250
+    },
+    {
+      "id": 25,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 12250
+    },
+    {
+      "id": 26,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 12750
+    },
+    {
+      "id": 27,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 13000
+    },
+    {
+      "id": 28,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 13250
+    },
+    {
+      "id": 29,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 13750
+    },
+    {
+      "id": 30,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 14250
+    },
+    {
+      "id": 31,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 14750,
+      "chordId": 2
+    },
+    {
+      "id": 32,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 14750,
+      "chordId": 2
+    },
+    {
+      "id": 33,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 15000
+    },
+    {
+      "id": 34,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 15250
+    },
+    {
+      "id": 35,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 15750
+    },
+    {
+      "id": 36,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 16250
+    },
+    {
+      "id": 37,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 16750
+    },
+    {
+      "id": 38,
+      "type": "chain",
+      "lane": 2,
+      "timeMs": 17000,
+      "chainId": 2
+    },
+    {
+      "id": 39,
+      "type": "chain",
+      "lane": 0,
+      "timeMs": 17250,
+      "chainId": 2
+    },
+    {
+      "id": 40,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 17750
+    },
+    {
+      "id": 41,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 18250
+    },
+    {
+      "id": 42,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 18750
+    },
+    {
+      "id": 43,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 19000
+    },
+    {
+      "id": 44,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 19250
+    },
+    {
+      "id": 45,
+      "type": "hold",
+      "lane": 0,
+      "timeMs": 19750,
+      "endMs": 20250
+    },
+    {
+      "id": 46,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 20250
+    },
+    {
+      "id": 47,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 20750
+    },
+    {
+      "id": 48,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 21000
+    },
+    {
+      "id": 49,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 21250
+    },
+    {
+      "id": 50,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 21750
+    },
+    {
+      "id": 51,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 22250
+    },
+    {
+      "id": 53,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 22750,
+      "chordId": 3
+    },
+    {
+      "id": 52,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 22750,
+      "chordId": 3
+    },
+    {
+      "id": 54,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 23000
+    },
+    {
+      "id": 55,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 23250
+    },
+    {
+      "id": 56,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 23750
+    },
+    {
+      "id": 57,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 24250
+    },
+    {
+      "id": 58,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 24750
+    },
+    {
+      "id": 59,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 25000
+    },
+    {
+      "id": 60,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 25250
+    },
+    {
+      "id": 61,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 25750
+    },
+    {
+      "id": 62,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 26250
+    },
+    {
+      "id": 63,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 26750
+    },
+    {
+      "id": 64,
+      "type": "chain",
+      "lane": 0,
+      "timeMs": 27000,
+      "chainId": 3
+    },
+    {
+      "id": 65,
+      "type": "chain",
+      "lane": 2,
+      "timeMs": 27250,
+      "chainId": 3
+    },
+    {
+      "id": 66,
+      "type": "hold",
+      "lane": 1,
+      "timeMs": 27750,
+      "endMs": 28250
+    },
+    {
+      "id": 67,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 28250
+    },
+    {
+      "id": 68,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 28750
+    },
+    {
+      "id": 69,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 29000
+    },
+    {
+      "id": 70,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 29250
+    },
+    {
+      "id": 71,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 29750
+    },
+    {
+      "id": 72,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 30250
+    },
+    {
+      "id": 73,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 30750,
+      "chordId": 4
+    },
+    {
+      "id": 74,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 30750,
+      "chordId": 4
+    },
+    {
+      "id": 75,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 31000
+    },
+    {
+      "id": 76,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 31250
+    },
+    {
+      "id": 77,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 31750
+    },
+    {
+      "id": 78,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 32250
+    },
+    {
+      "id": 79,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 32750
+    },
+    {
+      "id": 80,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 33000
+    },
+    {
+      "id": 81,
+      "type": "tap",
+      "lane": 2,
+      "timeMs": 33250
+    },
+    {
+      "id": 82,
+      "type": "tap",
+      "lane": 1,
+      "timeMs": 33750
+    },
+    {
+      "id": 83,
+      "type": "tap",
+      "lane": 0,
+      "timeMs": 34250
+    },
+    {
+      "id": 84,
+      "type": "tap",
+      "lane": 3,
+      "timeMs": 34750
+    }
+  ]
+}

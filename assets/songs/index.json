@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "songs": [
+    {
+      "id": "neon-pulse",
+      "title": "霓虹脉冲",
+      "artist": "NoteCollision 原创合成",
+      "audioPath": "neon-pulse/neon-pulse.wav",
+      "charts": {
+        "Easy": "neon-pulse/easy.json",
+        "Normal": "neon-pulse/normal.json",
+        "Hard": "neon-pulse/hard.json"
+      }
+    }
+  ]
+}
