@@ -1,37 +1,36 @@
 cmake_minimum_required(VERSION 3.24)
-
-project(NoteCollision VERSION 0.2.0 LANGUAGES CXX)
-
+project(NoteCollisionC VERSION 1.0.0 LANGUAGES C CXX)
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
-
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Widgets Multimedia Network)
-
-file(GLOB_RECURSE NOTE_COLLISION_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
-)
-
-qt_add_executable(NoteCollision ${NOTE_COLLISION_SOURCES})
-target_include_directories(NoteCollision PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(NoteCollision PRIVATE Qt6::Core Qt6::Widgets Qt6::Multimedia Qt6::Network)
-
-if (MSVC)
-    target_compile_options(NoteCollision PRIVATE /W4 /permissive-)
-else()
-    target_compile_options(NoteCollision PRIVATE -Wall -Wextra -Wpedantic)
+set(EASYX_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/easyx")
+if(NOT MINGW OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  message(FATAL_ERROR "Use the bundled VS Code MinGW x64 preset. See README.md.")
 endif()
-
+add_library(nc_core STATIC src/platform.c src/engine.c src/json.c src/assets.c src/storage.c src/audio.c src/network.c third_party/cjson/cJSON.c)
+target_include_directories(nc_core PUBLIC src third_party/cjson)
+target_compile_definitions(nc_core PUBLIC _CRT_SECURE_NO_WARNINGS WINVER=0x0601 _WIN32_WINNT=0x0601)
+target_compile_options(nc_core PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(nc_core PUBLIC winmm ws2_32 bcrypt shell32 ole32)
+add_executable(NoteCollision WIN32 src/main.c src/ui.c src/easyx_bridge.cpp)
+target_include_directories(NoteCollision PRIVATE "${EASYX_ROOT}/include")
+target_compile_definitions(NoteCollision PRIVATE UNICODE _UNICODE)
+target_compile_options(NoteCollision PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
+target_link_libraries(NoteCollision PRIVATE nc_core "${EASYX_ROOT}/lib_mingw_msvcrt/x64/libeasyxw.a" gdi32 user32 msimg32 gdiplus)
+target_link_options(NoteCollision PRIVATE -static -static-libgcc -static-libstdc++)
+add_custom_command(TARGET NoteCollision POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:NoteCollision>/assets")
 include(CTest)
-if (BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
-    add_subdirectory(tests)
+if(BUILD_TESTING)
+ add_executable(nc_tests tests/test_all.c)
+ target_link_libraries(nc_tests PRIVATE nc_core)
+ target_compile_options(nc_tests PRIVATE -Wall -Wextra -UNDEBUG)
+ target_link_options(nc_tests PRIVATE -static)
+ add_test(NAME nc_tests COMMAND nc_tests "${CMAKE_CURRENT_SOURCE_DIR}/assets/songs")
 endif()
-
-install(TARGETS NoteCollision RUNTIME DESTINATION bin)
+install(TARGETS NoteCollision RUNTIME DESTINATION .)
 install(DIRECTORY assets DESTINATION .)
-
+install(FILES README.md third_party/NOTICE.md DESTINATION .)
+install(FILES third_party/cjson/LICENSE DESTINATION licenses RENAME cJSON-LICENSE.txt)
+install(FILES third_party/easyx/readme.txt DESTINATION licenses RENAME EasyX-readme.txt)
