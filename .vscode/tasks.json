@@ -1,0 +1,28 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "音符碰撞：构建",
+            "type": "shell",
+            "command": "pwsh",
+            "args": ["-NoProfile", "-File", "${workspaceFolder}/tools/Development.ps1", "-Action", "Build"],
+            "group": {"kind": "build", "isDefault": true},
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "音符碰撞：测试",
+            "type": "shell",
+            "command": "pwsh",
+            "args": ["-NoProfile", "-File", "${workspaceFolder}/tools/Development.ps1", "-Action", "Test"],
+            "group": "test",
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "音符碰撞：运行",
+            "type": "shell",
+            "command": "pwsh",
+            "args": ["-NoProfile", "-File", "${workspaceFolder}/tools/Development.ps1", "-Action", "Run"],
+            "problemMatcher": []
+        }
+    ]
+}
