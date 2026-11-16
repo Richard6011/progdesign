@@ -1,45 +1,78 @@
-<<<<<<< HEAD
-# 音符碰撞
+# 音符碰撞 · C17 + EasyX
 
-C++17 / Qt 6.8.3 四轨节奏游戏，包含单人和局域网双人模式。
+原 Qt 项目的独立重写版，文件全部位于 `C:/Users/Administrator/Desktop/predesign_2`。原项目没有改动。
 
-## 开发环境
+## 代码规模与函数说明
 
-使用 VS Code 的 **程序设计** Profile。工具路径沿用已有配置：Qt 位于 `D:/Qt/6.8.3/mingw_64`，MinGW 位于 `D:/Qt/Tools/mingw1310_64`，CMake 3.31.10 和 Ninja 使用已安装版本。
+应用源码及头文件注释前为 3090 行，补充注释后为 4446 行；加上测试，C/C++ 共 4949 行。排除空白和纯注释后，应用有效代码为 3077 行，加测试为 3486 行。自编的 143 个应用函数、14 个测试函数和 17 个 Python 生成器函数均有中文详细说明，头文件接口也有注释。完整分文件统计和函数索引见 [代码规模与函数注释](docs/代码规模与函数注释.md)。
 
-当前工作入口为 `C:/Users/Administrator/Desktop/progdesign/code`。由于当前桌面应用仍占用原工作目录，`progdesign` 暂为指向原目录的 Windows 目录联接，两种路径访问同一份文件。关闭占用原目录的应用后，可从桌面的另一个 PowerShell 窗口执行 `tools/Rename-Workspace.ps1` 完成物理改名；脚本验证路径并在失败时恢复联接，不删除项目内容。
+## 直接运行
+
+完整解压 `out/NoteCollision-C-Windows-x64.zip`，双击其中的 `NoteCollision.exe`。保留同级 `assets` 文件夹。
+
+首次进入点击“没有账号，注册一个”，创建本机账号，再输入密码登录。默认不创建通用密码或演示账号。两台电脑可以使用不同账号。
+
+## VS Code 编译与调试
+
+沿用你的 **程序设计** Profile 的工具链：
+
+- GCC / G++ / GDB：`D:/Qt/Tools/mingw1310_64/bin`（GCC 13.1，x64，MSVCRT）。
+- CMake：`C:/Users/Administrator/AppData/Local/Programs/CMake/cmake-3.31.10-windows-x86_64/bin/cmake.exe`。
+- Ninja：`D:/Qt/Tools/Ninja/ninja.exe`。
+
+在“程序设计”Profile 打开本目录，选择 `c-debug` preset。`Ctrl+Shift+B` 构建，`F5` 调试。项目级配置已经覆盖原 Profile 的 Qt kit，不需要修改你的全局 Profile。也可以双击根目录的“构建.bat”“运行.bat”“测试.bat”。
 
 ```powershell
-pwsh -NoProfile -File .\tools\Development.ps1 -Action Open
-pwsh -NoProfile -File .\tools\Development.ps1 -Action Build
-pwsh -NoProfile -File .\tools\Development.ps1 -Action Test
-pwsh -NoProfile -File .\tools\Development.ps1 -Action Run
-pwsh -NoProfile -File .\tools\Development.ps1 -Action Package
+powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/Development.ps1 -Action Build
+powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/Development.ps1 -Action Test
+powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/Development.ps1 -Action Run
+powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/Development.ps1 -Action Package -Configuration Release
 ```
 
-可加 `-PackageName NoteCollision-v0.2.0` 生成独立版本目录和同名压缩包，方便与正在运行的旧包并存。本次新版包位于 `out/NoteCollision-v0.2.0-Windows-x64.zip`，完整解压即可发给朋友联机。
+## C 与 EasyX 的边界
 
-也可在该 Profile 中打开项目，使用 `Ctrl+Shift+B` 构建、`F5` 调试。构建目录必须使用英文路径；本机 Qt moc 对中文输出路径不能正确处理。脚本从英文工作入口配置 CMake Presets，构建产物保存在 `build/qt-debug` 或 `build/qt-release`，可携带文件输出到 `out/NoteCollision`。
+游戏判定、计分、界面布局与交互、账号、文件存储、音频、网络全部由 `.c` 文件按 C17 编译。EasyX 官方头文件含 `#error EasyX is only for C++`，因此保留 `src/easyx_bridge.cpp` 一个薄接口文件：只转发绘图、窗口事件和 UTF-8 文本，不包含游戏规则或网络逻辑。它不能称为“所有源文件均为纯 C”。
 
-## 使用
+不使用 Qt，不需要 Qt DLL。EasyX 26.10.25 的头文件与匹配的官方 MinGW MSVCRT x64 库已随源码放在 `third_party/easyx`，无需额外安装 EasyX。JSON 使用 MIT 许可的 cJSON 1.7.19。发行程序静态链接编译器运行库，只依赖 Windows 系统 DLL。
 
-选择曲目和 Easy / Normal / Hard，按 D、F、J、K 对应四条轨道。单点一次击打，长按保持至尾部，连锁节点与同时按键分别判定。单人按 Esc 暂停，继续时重新按住活动长按；重开和返回选曲不保存未完成局。
+## 功能与操作
 
-应用0.2.0新加入《小星星》，建议初次游玩选择该曲的 Easy。Perfect / Great / Good 判定窗口放宽为 ±90 / ±150 / ±220ms（`rulesVersion="2"`），单人、联机及三档难度共用该窗口。
+- 登录 / 注册、本机账号切换。
+- 《小星星》《霓虹脉冲》，各有 Easy / Normal / Hard 三档谱面。
+- D / F / J / K 四轨，单点、长按、连锁与同时按键。
+- 判定窗口 ±90 / ±150 / ±220 ms；分数、准确率、连击、S/A/B/C/D、Full Combo、All Perfect。
+- 音乐位置作为游戏时间。单人 Esc 暂停，Enter 继续；活动长按需重新按住；重开与退出不保存未完成局。
+- 音乐音量与 -200 至 +200 ms 输入校准保存到本机。
+- 单人 / 局域网排行榜按谱面、难度、规则分榜，分页显示，同分并列。
+- 局域网双人：创建或输入 IPv4 / 端口加入、资源 SHA-256 校验、准备、时钟同步、倒计时、对手比分、最终成绩确认、同分平局、断线中止。
+- 联机结算后由房主发起“再来一局”，保留 TCP 连接并重新准备；单人直接复用启动流程重开。
 
-双人模式在同一局域网的两台电脑运行相同程序及资源。一端创建房间，另一端输入房主显示的 IPv4 和端口。双方资源预加载并校验一致后准备，由房主开始。联机不暂停，失焦、退出或断线中止未确认局。最终同分为平局，双方结果确认后保存各自成绩。
+## 局域网
 
-成绩与设置保存到 Qt 的用户数据目录（Windows 为 `%APPDATA%/NoteCollision/音符碰撞`），通过 QSaveFile 原子写入；不同模式、谱面、难度和规则分榜，同分并列。首次读取已识别的旧版成绩和设置会重置，不保留或迁移旧数据；新版产生的数据正常保存。成绩格式升级为 `schemaVersion=3`，设置为 `schemaVersion=2`；当前版本的损坏文件及未知未来版本仍保留并提示。
+两台电脑运行相同发行包。房主在“局域网双人”中创建房间，将大厅显示的 IPv4 与端口告知客人。客人输入房主 IPv4（不能填自己电脑的 `127.0.0.1`），点击加入。房主选择曲目和难度，双方资源加载并校验后各自准备，由房主开始。Windows 若询问网络访问，请由使用者按所在网络自行处理。
 
-演示曲《霓虹脉冲》为本项目原创合成的 36 秒 WAV，三个难度分别包含 68、84、136 个判定单元。资源及再生成说明见 [assets/songs/neon-pulse/README.md](assets/songs/neon-pulse/README.md)。
+C 版使用协议版本 2，不与旧 Qt 版混联。音乐和谱面直接计算文件 SHA-256，因此联机双方使用完全相同文件。联网不交换账号密码，账号仅在各自本机保存。
 
-《小星星》采用公版曲调，由项目自行合成约33.8秒、100 BPM的录音并编写三档谱面；Easy / Normal / Hard 分别有43 / 57 / 66个判定单元，接近时间为2400 / 2000 / 1700ms。资源说明见 [assets/songs/twinkle-star/README.md](assets/songs/twinkle-star/README.md)。
+## 数据与资源
 
-## 开发资料
+账号、设置、成绩在 `%APPDATA%/NoteCollisionC`，与旧 Qt 版独立，不迁移或覆盖旧版文件。账号文件存储随机盐与 SHA-256 摘要。文件使用 UTF-8 JSON 和临时文件原子替换；损坏、未知版本的成绩文件保留且禁止覆盖。损坏设置使用默认值并阻止覆盖。
 
-- 需求、设计与当前规则：[音符碰撞总体开发文档](docs/音符碰撞总体开发文档.md)。
-- 实际进度与验证：[实现与验证记录](docs/实现与验证记录.md)。
+歌曲与谱面保留原版资源及资源说明。生成脚本在 `tools/generate_demo.py` 和 `tools/generate_twinkle.py`。谱面检查轨道、ID、时间、同轨重叠、连锁 / 同时按键分组、WAV 时长和资源路径。
 
-=======
-# progdesign
->>>>>>> origin/main
+## 结构
+
+| 文件 | 职责 |
+| --- | --- |
+| `src/main.c` | 页面跳转、输入分发、演奏生命周期 |
+| `src/ui.c` | EasyX 页面、按钮、四轨绘制 |
+| `src/engine.c` | 确定性判定与分数统计 |
+| `src/assets.c` | 歌曲索引、谱面与 WAV 校验 |
+| `src/storage.c` | 账号、设置、成绩、排行榜 |
+| `src/audio.c` | Windows MCI 播放、暂停、音量、位置 |
+| `src/network.c` | Winsock 非阻塞 TCP、同步与结果确认 |
+| `src/platform.c` | UTF-8 路径、SHA-256、时钟、原子写入 |
+| `src/json.c` | 带范围检查的 JSON 访问 |
+| `src/easyx_bridge.cpp` | EasyX 的 C ABI 转发 |
+| `tests/test_all.c` | 判定、资源、文件与真实 TCP 回归 |
+
+测试与实际验证范围见 `docs/验证记录.md`。两台实体电脑的播放延迟、不同声卡以及键盘多键冲突仍需实测。

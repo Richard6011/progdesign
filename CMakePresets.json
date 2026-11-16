@@ -1,49 +1,51 @@
 {
-    "version": 6,
-    "configurePresets": [
-        {
-            "name": "qt-debug",
-            "displayName": "Qt 6.8.3 MinGW Debug",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/qt-debug",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_PREFIX_PATH": "D:/Qt/6.8.3/mingw_64",
-                "CMAKE_CXX_COMPILER": "D:/Qt/Tools/mingw1310_64/bin/g++.exe",
-                "CMAKE_MAKE_PROGRAM": "D:/Qt/Tools/Ninja/ninja.exe"
-            },
-            "environment": {
-                "PATH": "D:/Qt/Tools/mingw1310_64/bin;D:/Qt/6.8.3/mingw_64/bin;D:/Qt/Tools/Ninja;$penv{PATH}"
-            }
-        },
-        {
-            "name": "qt-release",
-            "inherits": "qt-debug",
-            "displayName": "Qt 6.8.3 MinGW Release",
-            "binaryDir": "${sourceDir}/build/qt-release",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
-            }
-        }
-    ],
-    "buildPresets": [
-        {
-            "name": "qt-debug",
-            "configurePreset": "qt-debug"
-        },
-        {
-            "name": "qt-release",
-            "configurePreset": "qt-release"
-        }
-    ],
-    "testPresets": [
-        {
-            "name": "qt-debug",
-            "configurePreset": "qt-debug",
-            "output": {
-                "outputOnFailure": true
-            }
-        }
-    ]
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "c-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "D:/Qt/Tools/mingw1310_64/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "D:/Qt/Tools/mingw1310_64/bin/g++.exe",
+        "CMAKE_MAKE_PROGRAM": "D:/Qt/Tools/Ninja/ninja.exe",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "c-release",
+      "inherits": "c-debug",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "c-debug",
+      "configurePreset": "c-debug"
+    },
+    {
+      "name": "c-release",
+      "configurePreset": "c-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "c-debug",
+      "configurePreset": "c-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "c-release",
+      "configurePreset": "c-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
 }
-

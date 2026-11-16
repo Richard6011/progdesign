@@ -1,12 +1,4 @@
 build/
 out/
-.cache/
-CMakeUserPresets.json
 *.user
-*.autosave
-*.log
-*.obj
-*.o
-*.dll
-*.exe
-
+*.tmp
