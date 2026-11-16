@@ -3,7 +3,9 @@ param(
     [ValidateSet('Open', 'Build', 'Test', 'Run', 'Package')]
     [string]$Action = 'Build',
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Debug'
+    [string]$Configuration = 'Debug',
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')]
+    [string]$PackageName = 'NoteCollision'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -148,8 +150,8 @@ try {
             Assert-Tool $windeployqtPath
             $binary = Get-BinaryPath $releasePreset
             $outDirectory = Join-Path $workspace.PhysicalWorkspace 'out'
-            $packageDirectory = Join-Path $outDirectory 'NoteCollision'
-            $expectedPackageDirectory = Join-Path $workspace.PhysicalWorkspace 'out\NoteCollision'
+            $packageDirectory = Join-Path $outDirectory $PackageName
+            $expectedPackageDirectory = Join-Path $workspace.PhysicalWorkspace "out\$PackageName"
             if (Test-Path -LiteralPath $outDirectory) {
                 $outItem = Get-Item -LiteralPath $outDirectory -Force
                 if (-not [string]::IsNullOrWhiteSpace($outItem.LinkType)) {
@@ -177,7 +179,12 @@ try {
                 '--dir', $packageDirectory, $deployedBinary)
             Copy-Item -LiteralPath (Join-Path $workspace.PhysicalWorkspace 'assets') `
                 -Destination (Join-Path $packageDirectory 'assets') -Recurse -Force
+            Copy-Item -LiteralPath (Join-Path $workspace.PhysicalWorkspace 'docs\快速开始与联机.md') `
+                -Destination (Join-Path $packageDirectory '开始玩和联机说明.md') -Force
+            $packageZip = Join-Path $outDirectory "$PackageName-Windows-x64.zip"
+            Compress-Archive -LiteralPath $packageDirectory -DestinationPath $packageZip -CompressionLevel Optimal -Force
             Write-Host "可携带目录已生成：$packageDirectory"
+            Write-Host "可发送压缩包已生成：$packageZip"
         }
     }
 } finally {

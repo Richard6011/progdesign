@@ -11,6 +11,17 @@
         "Normal": "neon-pulse/normal.json",
         "Hard": "neon-pulse/hard.json"
       }
+    },
+    {
+      "id": "twinkle-star",
+      "title": "小星星",
+      "artist": "NoteCollision 公版旋律合成",
+      "audioPath": "twinkle-star/twinkle-star.wav",
+      "charts": {
+        "Easy": "twinkle-star/easy.json",
+        "Normal": "twinkle-star/normal.json",
+        "Hard": "twinkle-star/hard.json"
+      }
     }
   ]
 }

@@ -4,6 +4,12 @@ target_link_libraries(core_tests PRIVATE Qt6::Core)
 add_test(NAME core_tests COMMAND core_tests)
 
 add_subdirectory(storage)
+add_executable(DataResetTests storage/DataResetTests.cpp
+    ../src/storage/RecordRepository.cpp ../src/storage/SettingsRepository.cpp
+    ../src/core/ScoreService.cpp)
+target_include_directories(DataResetTests PRIVATE ../src)
+target_link_libraries(DataResetTests PRIVATE Qt6::Core)
+add_test(NAME DataResetTests COMMAND DataResetTests)
 
 foreach(test_name IN ITEMS NetworkTests NetworkReviewTests)
     add_executable(${test_name} network/${test_name}.cpp

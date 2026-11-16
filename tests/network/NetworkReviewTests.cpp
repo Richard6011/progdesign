@@ -41,7 +41,7 @@ QJsonObject roomConfig()
 {
     return {{"songId", "demo"}, {"chartId", "demo-normal"}, {"chartVersion", 1},
         {"difficulty", "Normal"}, {"chartHash", QString(64, 'a')}, {"audioHash", QString(64, 'b')},
-        {"rulesVersion", "1"}, {"noteCount", 6}};
+        {"rulesVersion", JudgeConfig{}.rulesVersion}, {"noteCount", 6}};
 }
 
 QJsonObject statistics(const PlayStats& stats)

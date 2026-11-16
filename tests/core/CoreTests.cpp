@@ -45,7 +45,10 @@ Chart oneNoteChart(const NoteType type = NoteType::Tap)
 
 void testExactWindowsAndOffset()
 {
-    const std::vector<qint64> deltas{-141, -140, -91, -90, -46, -45, 0, 45, 46, 90, 91, 140, 141};
+    const JudgeConfig config;
+    expect(config.perfectMs == 90 && config.greatMs == 150 && config.goodMs == 220
+            && config.rulesVersion == "2", "default rules use the wider version 2 windows");
+    const std::vector<qint64> deltas{-221, -220, -151, -150, -91, -90, 0, 90, 91, 150, 151, 220, 221};
     for (const int offset : {-200, -75, 0, 75, 200}) {
         for (const qint64 delta : deltas) {
             GameEngine engine;
@@ -53,15 +56,15 @@ void testExactWindowsAndOffset()
             const qint64 inputTime = 1000 + delta - offset;
             const bool hit = engine.handleKeyPress(0, inputTime);
             const qint64 absolute = std::llabs(delta);
-            expect(hit == (absolute <= 140), "exact calibrated window accepts only allowed inputs");
+            expect(hit == (absolute <= config.goodMs), "exact calibrated window accepts only allowed inputs");
             engine.advanceTo(1500);
             const auto& stats = engine.stats();
             expect(stats.finalizedCount == 1, "window note finalized exactly once");
-            if (absolute <= 45) {
+            if (absolute <= config.perfectMs) {
                 expect(stats.perfect == 1, "perfect boundary inclusive");
-            } else if (absolute <= 90) {
+            } else if (absolute <= config.greatMs) {
                 expect(stats.great == 1, "great boundary inclusive");
-            } else if (absolute <= 140) {
+            } else if (absolute <= config.goodMs) {
                 expect(stats.good == 1, "good boundary inclusive");
             } else {
                 expect(stats.miss == 1, "out of window misses");
@@ -70,9 +73,9 @@ void testExactWindowsAndOffset()
 
         GameEngine deadline;
         deadline.startSession(oneNoteChart(), {}, offset);
-        deadline.advanceTo(1140 - offset);
+        deadline.advanceTo(1000 + config.goodMs - offset);
         expect(deadline.stats().finalizedCount == 0, "latest valid calibrated input is not expired");
-        deadline.advanceTo(1141 - offset);
+        deadline.advanceTo(1001 + config.goodMs - offset);
         expect(deadline.stats().miss == 1, "head expires one millisecond past calibrated deadline");
     }
 }
@@ -86,7 +89,7 @@ void testWindowsAndRepeat()
     engine.handleKeyRelease(0, 1001);
     expect(engine.stats().perfect == 1 && engine.stats().finalizedCount == 1, "single point once");
 
-    expect(engine.handleKeyPress(1, 2090), "great hold head accepted");
+    expect(engine.handleKeyPress(1, 2100), "great hold head accepted");
     engine.advanceTo(3000);
     expect(engine.stats().great == 1 && engine.stats().finalizedCount == 2, "hold tail finalizes once");
     engine.handleKeyRelease(1, 3000);
@@ -106,7 +109,7 @@ void testEarlyReleaseAndIndependentChords()
 
     expect(engine.handleKeyPress(2, 3500), "first chord member accepted");
     engine.handleKeyRelease(2, 3501);
-    engine.advanceTo(3641);
+    engine.advanceTo(3721);
     expect(engine.stats().miss == 2, "unpressed chord member misses independently");
     engine.advanceTo(3800);
     expect(engine.stats().miss == 2, "finalized chord members do not repeat");
@@ -175,8 +178,8 @@ void testDocumentSixNoteExample()
     engine.handleKeyRelease(2, 3481);
     engine.handleKeyPress(3, 3520);
     engine.handleKeyRelease(3, 3521);
-    engine.handleKeyPress(0, 4100);
-    engine.handleKeyRelease(0, 4101);
+    engine.handleKeyPress(0, 4180);
+    engine.handleKeyRelease(0, 4181);
     engine.handleKeyPress(1, 4310);
     engine.handleKeyRelease(1, 4311);
     const auto result = ScoreService::buildResult(engine.stats(), 6);
@@ -210,6 +213,42 @@ void testEarliestCandidateAndChainMiss()
     engine.handleKeyPress(1, 1300);
     expect(engine.stats().miss == 1 && engine.stats().perfect == 1 && engine.stats().combo == 1,
         "missed chain step does not block later step");
+}
+
+void testWiderWindowsStayIndependent()
+{
+    GameEngine great;
+    great.startSession(oneNoteChart());
+    expect(great.handleKeyPress(0, 1100) && great.stats().great == 1,
+        "100ms late input now earns Great");
+    GameEngine good;
+    good.startSession(oneNoteChart());
+    expect(good.handleKeyPress(0, 1180) && good.stats().good == 1,
+        "180ms late input remains playable with Good");
+
+    Chart overlapping = oneNoteChart();
+    overlapping.notes.push_back({2, NoteType::Tap, 0, 1200, 1200, -1, -1});
+    GameEngine engine;
+    engine.startSession(overlapping);
+    engine.handleKeyPress(0, 1180);
+    const auto first = engine.takeEvents();
+    expect(first.size() == 1 && first[0].noteId == 1 && first[0].judgement == Judgement::Good,
+        "overlapping wider windows choose the earliest note even when the next is closer");
+    expect(engine.stats().finalizedCount == 1 && engine.stats().good == 1,
+        "one physical press cannot consume both overlapping notes");
+    engine.handleKeyPress(0, 1200, true);
+    expect(engine.stats().finalizedCount == 1, "auto-repeat cannot consume the overlapping next note");
+    engine.handleKeyRelease(0, 1200);
+    expect(engine.handleKeyPress(0, 1201) && engine.stats().perfect == 1,
+        "the overlapping next note still needs its own release and press");
+
+    GameEngine hold;
+    hold.startSession(oneNoteChart(NoteType::Hold));
+    expect(hold.handleKeyPress(0, 1180) && hold.stats().finalizedCount == 0,
+        "a relaxed Good hold head still defers scoring to the tail");
+    hold.handleKeyRelease(0, 2000);
+    expect(hold.stats().good == 1 && hold.stats().finalizedCount == 1,
+        "wider hold head preserves the strict exact-tail rule and a single judgement");
 }
 
 void testPauseAndRestart()
@@ -279,7 +318,7 @@ void testLateFramesKeepChronologicalCombo()
     late.startSession(chart);
     timely.handleKeyPress(0, 1000);
     late.handleKeyPress(0, 1000);
-    timely.advanceTo(2141);
+    timely.advanceTo(2221);
     timely.advanceTo(3000);
     late.advanceTo(3000);
     expect(late.stats().combo == timely.stats().combo && late.stats().combo == 1,
@@ -287,7 +326,7 @@ void testLateFramesKeepChronologicalCombo()
     expect(late.stats().maxCombo == timely.stats().maxCombo,
         "late timer batches keep the same maximum combo");
     const auto events = late.takeEvents();
-    expect(events.size() == 2 && events[0].noteId == 2 && events[0].musicTimeMs == 2141
+    expect(events.size() == 2 && events[0].noteId == 2 && events[0].musicTimeMs == 2221
             && events[1].noteId == 1 && events[1].musicTimeMs == 3000,
         "late events retain their effective judgement times");
 }
@@ -302,6 +341,7 @@ int main()
     testScoreAndGrade();
     testDocumentSixNoteExample();
     testEarliestCandidateAndChainMiss();
+    testWiderWindowsStayIndependent();
     testPauseAndRestart();
     testStableAdvanceOrderingAndInvalidInput();
     testLateFramesKeepChronologicalCombo();

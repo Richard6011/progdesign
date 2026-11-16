@@ -99,6 +99,9 @@ public:
         window.settings_.musicVolume = 0;
         window.nickname_->setText("冒烟测试");
         window.showPreparation();
+        const int twinkleIndex = window.songBox_->findData("twinkle-star");
+        if (!check(twinkleIndex >= 0, "Twinkle Star is available in the real song selector")) return 1;
+        window.songBox_->setCurrentIndex(twinkleIndex);
         window.difficultyBox_->setCurrentText("Easy");
         window.startSolo();
         const QString firstSession = window.engine_.sessionId();
@@ -139,7 +142,7 @@ public:
         check(capture("ui-game.png"), "capture game screenshot");
 
         if (!check(waitUntil([&] { return window.phase_ == MainWindow::Phase::Result; }, 42000),
-                   "36-second media reaches natural EndOfMedia and the result page")) {
+                   "Twinkle Star media reaches natural EndOfMedia and the result page")) {
             std::cerr << "Audio error: " << audioError.toStdString() << '\n';
             std::cerr << "Status: " << window.globalStatus_->text().toStdString() << '\n';
             return 1;
@@ -166,6 +169,7 @@ public:
         check(ranking.size() == 1 && ranking[0].rank == 1 && ranking[0].record.playerName == "冒烟测试",
               "saved Solo score appears in the correct leaderboard");
         window.rankMode_->setCurrentIndex(0);
+        window.rankSong_->setCurrentIndex(window.rankSong_->findData("twinkle-star"));
         window.rankDifficulty_->setCurrentText("Easy");
         window.refreshRanking();
         check(window.ranking_->rowCount() == 1 && window.ranking_->item(0, 2)->text() == "0",

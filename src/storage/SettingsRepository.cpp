@@ -9,6 +9,8 @@
 
 namespace nc {
 namespace {
+constexpr int CurrentSettingsSchema = 2;
+
 bool fail(QString *error, const QString &message) {
     if (error)
         *error = message;
@@ -24,7 +26,7 @@ bool integer(const QJsonValue &value, int *number, int minimum, int maximum) {
     return true;
 }
 bool valid(const AppSettings &settings) {
-    return settings.schemaVersion == 1 && settings.musicVolume >= 0 &&
+    return settings.schemaVersion == CurrentSettingsSchema && settings.musicVolume >= 0 &&
            settings.musicVolume <= 100 && settings.effectVolume >= 0 &&
            settings.effectVolume <= 100 && settings.inputOffsetMs >= -200 &&
            settings.inputOffsetMs <= 200 && !settings.playerName.trimmed().isEmpty() &&
@@ -69,8 +71,27 @@ AppSettings SettingsRepository::load(QString *warning) {
         return settings;
     }
     const auto object = doc.object();
-    if (!integer(object["schemaVersion"], &settings.schemaVersion, 1, 1) ||
-        !integer(object["musicVolume"], &settings.musicVolume, 0, 100) ||
+    int schema = 0;
+    if (!integer(object["schemaVersion"], &schema, 1, CurrentSettingsSchema)) {
+        if (warning)
+            *warning = "设置版本未知，保留原文件并使用默认设置";
+        return AppSettings{};
+    }
+    if (schema < CurrentSettingsSchema) {
+        file.close();
+        QString resetError;
+        AppSettings fresh;
+        if (!save(fresh, &resetError)) {
+            if (warning)
+                *warning = "旧版设置重置失败，保留原文件并使用默认设置：" + resetError;
+            return fresh;
+        }
+        if (warning)
+            *warning = "旧版设置已重置为默认值";
+        return fresh;
+    }
+    settings.schemaVersion = schema;
+    if (!integer(object["musicVolume"], &settings.musicVolume, 0, 100) ||
         !integer(object["effectVolume"], &settings.effectVolume, 0, 100) ||
         !integer(object["inputOffsetMs"], &settings.inputOffsetMs, -200, 200) ||
         !object["playerName"].isString()) {
@@ -97,7 +118,7 @@ bool SettingsRepository::save(const AppSettings &settings, QString *error) {
     QSaveFile file(filePath());
     if (!file.open(QIODevice::WriteOnly))
         return fail(error, "无法保存设置：" + file.errorString());
-    QJsonObject object{{"schemaVersion", 1},
+    QJsonObject object{{"schemaVersion", CurrentSettingsSchema},
                        {"musicVolume", settings.musicVolume},
                        {"effectVolume", settings.effectVolume},
                        {"inputOffsetMs", settings.inputOffsetMs},

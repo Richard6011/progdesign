@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QTemporaryDir>
 #include <iostream>
 
@@ -35,7 +36,7 @@ nc::PlayRecord record(QString id, QString name, const nc::Chart &chart, int miss
     result.chartVersion = chart.version;
     result.chartHash = chart.chartHash;
     result.difficulty = chart.difficulty;
-    result.rulesVersion = "1";
+    result.rulesVersion = nc::JudgeConfig{}.rulesVersion;
     result.noteCount = static_cast<int>(chart.notes.size());
     for (int i = 0; i < result.noteCount; ++i)
         nc::ScoreService::applyJudgement(result.stats, i < misses ? nc::Judgement::Miss : nc::Judgement::Perfect);
@@ -58,18 +59,33 @@ int main(int argc, char **argv) {
     check(chart.chartHash.size() == 64, "chart hash is SHA-256");
     check(songs.audioHash(song, &error).size() == 64, "audio hash is SHA-256");
 
-    for (const auto &difficulty : {QString("Easy"), QString("Normal"), QString("Hard")}) {
-        nc::Chart current;
-        check(songs.loadChart(song, difficulty, &current, &error), qPrintable(error));
-        bool tap = false, hold = false, chain = false, chord = false;
-        for (const auto &note : current.notes) {
-            tap |= note.type == nc::NoteType::Tap && note.chordId < 0;
-            hold |= note.type == nc::NoteType::Hold;
-            chain |= note.type == nc::NoteType::ChainStep;
-            chord |= note.chordId >= 0;
+    bool foundTwinkle = false;
+    for (const auto &indexedSong : songs.songs()) {
+        foundTwinkle |= indexedSong.id == "twinkle-star" && indexedSong.title == "小星星";
+        QSet<QString> hashes;
+        std::vector<int> counts;
+        for (const auto &difficulty : {QString("Easy"), QString("Normal"), QString("Hard")}) {
+            nc::Chart current;
+            check(songs.loadChart(indexedSong, difficulty, &current, &error), qPrintable(error));
+            bool tap = false, hold = false, chain = false, chord = false;
+            for (const auto &note : current.notes) {
+                tap |= note.type == nc::NoteType::Tap && note.chordId < 0;
+                hold |= note.type == nc::NoteType::Hold;
+                chain |= note.type == nc::NoteType::ChainStep;
+                chord |= note.chordId >= 0;
+                check(note.endTimeMs + nc::JudgeConfig{}.goodMs <= current.audioDurationMs,
+                      "every delivered note has room for the wider miss window");
+            }
+            check(tap && hold && chain && chord, "every song difficulty contains the four note forms");
+            hashes.insert(current.chartHash);
+            counts.push_back(static_cast<int>(current.notes.size()));
         }
-        check(tap && hold && chain && chord, "all difficulties contain the four note forms");
+        check(hashes.size() == 3, "each song has three distinct chart hashes");
+        if (indexedSong.id == "twinkle-star")
+            check(counts[0] < counts[1] && counts[1] < counts[2],
+                  "Twinkle Star difficulty increases actual note density");
     }
+    check(foundTwinkle, "Twinkle Star is present and selectable in the delivered song index");
 
     QTemporaryDir temp;
     check(temp.isValid(), "temporary directory");
@@ -91,24 +107,21 @@ int main(int argc, char **argv) {
     check(records.queryRanking(mismatch).empty(), "Solo and LAN boards are separate");
     nc::RecordRepository reopened(temp.path());
     check(reopened.load(&error) && reopened.records().size() == 4, "history survives reopening");
-    QTemporaryDir oldDir;
-    auto legacy = QJsonDocument::fromJson(readFile(records.filePath())).object();
-    legacy["schemaVersion"] = 1;
-    auto legacyRecords = legacy["records"].toArray();
-    for (int i = 0; i < legacyRecords.size(); ++i) {
-        auto item = legacyRecords[i].toObject();
-        item.remove("mode");
-        item.remove("resultConfirmed");
-        legacyRecords[i] = item;
+    for (const int oldVersion : {1, 2}) {
+        QTemporaryDir oldDir;
+        auto legacy = QJsonDocument::fromJson(readFile(records.filePath())).object();
+        legacy["schemaVersion"] = oldVersion;
+        const QString legacyFile = QDir(oldDir.path()).filePath("records.json");
+        check(writeFile(legacyFile, QJsonDocument(legacy).toJson()), "write old-version history fixture");
+        nc::RecordRepository reset(oldDir.path());
+        check(reset.load(&error) && reset.records().empty(), "old-version history resets to an empty new board");
+        const auto cleared = QJsonDocument::fromJson(readFile(legacyFile)).object();
+        check(cleared["schemaVersion"].toInt() == 3 && cleared["records"].toArray().isEmpty(),
+              "old history file is atomically replaced by an empty schema 3 file");
+        check(reset.saveOnce(record("new-run", "Delta", chart), &error), qPrintable(error));
+        check(reset.records().size() == 1 && reset.records()[0].rulesVersion == "2",
+              "new rules save normally after discarding old history");
     }
-    legacy["records"] = legacyRecords;
-    check(writeFile(QDir(oldDir.path()).filePath("records.json"), QJsonDocument(legacy).toJson()), "write v1 fixture");
-    nc::RecordRepository migrated(oldDir.path());
-    check(migrated.load(&error) && migrated.records().size() == 4 && migrated.records()[0].mode == nc::GameMode::Solo,
-          "legacy history without mode migrates to Solo");
-    check(migrated.saveOnce(record("migrated-5", "Delta", chart), &error), qPrintable(error));
-    check(QJsonDocument::fromJson(readFile(migrated.filePath())).object()["schemaVersion"].toInt() == 2,
-          "new saves use v2 after migration");
     auto invalid = record("invalid", "玩家", chart);
     invalid.result.score = 800000;
     check(!records.saveOnce(invalid, &error), "forged score is rejected");
@@ -148,6 +161,15 @@ int main(int argc, char **argv) {
     const auto before = readFile(settings.filePath());
     options.inputOffsetMs = 201;
     check(!settings.save(options, &error) && readFile(settings.filePath()) == before, "invalid settings cannot replace valid settings");
+    auto oldOptions = QJsonDocument::fromJson(before).object();
+    oldOptions["schemaVersion"] = 1;
+    check(writeFile(settings.filePath(), QJsonDocument(oldOptions).toJson()), "write old settings fixture");
+    const auto defaults = settings.load(&error);
+    check(defaults.schemaVersion == 2 && defaults.musicVolume == nc::AppSettings{}.musicVolume
+              && defaults.inputOffsetMs == 0 && defaults.playerName == nc::AppSettings{}.playerName,
+          "old settings reset to new defaults instead of retaining previous values");
+    check(QJsonDocument::fromJson(readFile(settings.filePath())).object()["schemaVersion"].toInt() == 2,
+          "old settings file is rewritten with current schema");
 
     // Path traversal and malformed chart fixtures are isolated from the checked-in resources.
     QTemporaryDir resourceCopy;
@@ -156,9 +178,25 @@ int main(int argc, char **argv) {
     check(QFile::copy(song.audioPath, copy.filePath("neon-pulse/neon-pulse.wav")), "copy audio fixture");
     for (const auto &difficulty : {QString("Easy"), QString("Normal"), QString("Hard")})
         check(QFile::copy(song.difficultyCharts[difficulty], copy.filePath("neon-pulse/" + difficulty.toLower() + ".json")), "copy chart fixture");
-    check(QFile::copy(QDir(assets).filePath("index.json"), copy.filePath("index.json")), "copy index fixture");
+    auto fixtureIndex = QJsonDocument::fromJson(readFile(QDir(assets).filePath("index.json"))).object();
+    fixtureIndex["songs"] = QJsonArray{fixtureIndex["songs"].toArray()[0]};
+    check(writeFile(copy.filePath("index.json"), QJsonDocument(fixtureIndex).toJson()), "copy single-song index fixture");
     const auto chartPath = copy.filePath("neon-pulse/easy.json");
     auto malformed = QJsonDocument::fromJson(readFile(chartPath)).object();
+    const auto originalChart = malformed;
+    const qint64 endMs = chart.audioDurationMs - nc::JudgeConfig{}.goodMs;
+    auto boundaryChart = originalChart;
+    boundaryChart["notes"] = QJsonArray{QJsonObject{{"id", 1}, {"type", "tap"}, {"lane", 0}, {"timeMs", endMs}}};
+    check(writeFile(chartPath, QJsonDocument(boundaryChart).toJson()), "write exact wider-tail fixture");
+    nc::SongRepository boundarySongs(resourceCopy.path());
+    check(boundarySongs.loadIndex(&error), "a last tap with exactly 220ms of audio remaining is allowed");
+    boundaryChart["notes"] = QJsonArray{QJsonObject{{"id", 1}, {"type", "tap"}, {"lane", 0}, {"timeMs", endMs + 1}}};
+    check(writeFile(chartPath, QJsonDocument(boundaryChart).toJson()), "write short wider-tail fixture");
+    check(!boundarySongs.loadIndex(&error), "a last tap with only 219ms of audio remaining is rejected");
+    boundaryChart["notes"] = QJsonArray{QJsonObject{{"id", 1}, {"type", "hold"}, {"lane", 0},
+                                                  {"timeMs", endMs - 600}, {"endMs", endMs}}};
+    check(writeFile(chartPath, QJsonDocument(boundaryChart).toJson()), "write exact hold-tail fixture");
+    check(boundarySongs.loadIndex(&error), "a hold tail reserves the same full 220ms window");
     auto notes = malformed["notes"].toArray();
     auto note = notes[0].toObject();
     note["lane"] = 4;

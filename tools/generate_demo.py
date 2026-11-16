@@ -169,21 +169,26 @@ def main() -> None:
         path = SONG_DIR / f"{difficulty.lower()}.json"
         path.write_text(json.dumps(chart, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    index = {
-        "schemaVersion": 1,
-        "songs": [{
-            "id": "neon-pulse",
-            "title": "霓虹脉冲",
-            "artist": "NoteCollision 原创合成",
-            "audioPath": "neon-pulse/neon-pulse.wav",
-            "charts": {
-                "Easy": "neon-pulse/easy.json",
-                "Normal": "neon-pulse/normal.json",
-                "Hard": "neon-pulse/hard.json",
-            },
-        }],
+    demo_song = {
+        "id": "neon-pulse",
+        "title": "霓虹脉冲",
+        "artist": "NoteCollision 原创合成",
+        "audioPath": "neon-pulse/neon-pulse.wav",
+        "charts": {
+            "Easy": "neon-pulse/easy.json",
+            "Normal": "neon-pulse/normal.json",
+            "Hard": "neon-pulse/hard.json",
+        },
     }
-    (ROOT / "assets" / "songs" / "index.json").write_text(
+    index_path = ROOT / "assets" / "songs" / "index.json"
+    existing_songs = []
+    if index_path.exists():
+        existing = json.loads(index_path.read_text(encoding="utf-8"))
+        existing_songs = [song for song in existing.get("songs", [])
+                         if song.get("id") != "neon-pulse"]
+    # Preserve separately added songs such as twinkle-star when rebuilding the demo assets.
+    index = {"schemaVersion": 1, "songs": [demo_song] + existing_songs}
+    index_path.write_text(
         json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 

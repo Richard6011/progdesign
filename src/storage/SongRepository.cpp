@@ -131,7 +131,7 @@ bool validate(Chart *chart, QString *error) {
         if (ids.contains(note.id))
             return fail(error, "音符 id 重复：" + QString::number(note.id));
         ids.insert(note.id);
-        if (note.endTimeMs + 140 > chart->audioDurationMs)
+        if (note.endTimeMs + JudgeConfig{}.goodMs > chart->audioDurationMs)
             return fail(error, "音符或长按尾部加漏击窗口超过音频时长");
         if (note.hitTimeMs < laneAvailable[note.lane] + 200)
             return fail(error,
