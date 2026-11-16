@@ -52,10 +52,11 @@ struct Chart {
 };
 
 struct JudgeConfig {
-    qint64 perfectMs = 45;
-    qint64 greatMs = 90;
-    qint64 goodMs = 140;
-    QString rulesVersion = QStringLiteral("1");
+    // Version 2 widens the forgiving windows for ordinary keyboard timing.
+    qint64 perfectMs = 90;
+    qint64 greatMs = 150;
+    qint64 goodMs = 220;
+    QString rulesVersion = QStringLiteral("2");
 };
 
 struct PlayStats {
@@ -103,7 +104,7 @@ struct PlayRecord {
 };
 
 struct AppSettings {
-    int schemaVersion = 1;
+    int schemaVersion = 2;
     int musicVolume = 70;
     int effectVolume = 70;
     int inputOffsetMs = 0;

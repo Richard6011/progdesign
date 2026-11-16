@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -14,10 +15,28 @@
 
 namespace nc {
 namespace {
+constexpr int CurrentRecordsSchema = 3;
+
 bool fail(QString *error, const QString &message) {
     if (error)
         *error = message;
     return false;
+}
+bool writeEmptyRecords(const QString &path, QString *error) {
+    const QFileInfo info(path);
+    if (!QDir().mkpath(info.absolutePath()))
+        return fail(error, "无法创建成绩目录：" + info.absolutePath());
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly))
+        return fail(error, "无法重置成绩文件：" + file.errorString());
+    const auto bytes = QJsonDocument(QJsonObject{{"schemaVersion", CurrentRecordsSchema},
+                                                {"records", QJsonArray{}}})
+                           .toJson(QJsonDocument::Indented);
+    if (file.write(bytes) != bytes.size() || !file.commit())
+        return fail(error, "无法提交成绩重置：" + file.errorString());
+    if (error)
+        error->clear();
+    return true;
 }
 QString modeName(GameMode mode) {
     return mode == GameMode::Lan ? QStringLiteral("Lan") : QStringLiteral("Solo");
@@ -232,8 +251,21 @@ bool RecordRepository::load(QString *error) {
     const auto object = document.object();
     int schema = 0;
     if (parse.error != QJsonParseError::NoError || !document.isObject() ||
-        !object["records"].isArray() || !intValue(object, "schemaVersion", &schema, 1, 2))
+        !object["records"].isArray() || !intValue(object, "schemaVersion", &schema, 1, CurrentRecordsSchema))
         return reject("成绩文件损坏或版本不受支持");
+    if (schema < CurrentRecordsSchema) {
+        // 用户明确不保留旧版成绩；只对已识别的旧版本执行原子重置。
+        file.close();
+        QString resetError;
+        if (!writeEmptyRecords(filePath(), &resetError)) {
+            writable_ = false;
+            loadError_ = "旧版成绩重置失败：" + resetError;
+            return fail(error, loadError_);
+        }
+        if (error)
+            error->clear();
+        return true;
+    }
     std::vector<PlayRecord> loaded;
     QSet<QString> uniqueKeys;
     for (const auto &value : object["records"].toArray()) {
@@ -242,7 +274,7 @@ bool RecordRepository::load(QString *error) {
         const auto item = value.toObject();
         PlayRecord record;
         if (!text(item, "sessionId", &record.sessionId) ||
-            !parseMode(item["mode"], &record.mode, true) ||
+            !parseMode(item["mode"], &record.mode) ||
             !text(item, "matchId", &record.matchId, false) ||
             !text(item, "playerId", &record.playerId, false) ||
             !text(item, "opponentName", &record.opponentName, false) ||
@@ -262,9 +294,6 @@ bool RecordRepository::load(QString *error) {
             !item["finishedAtUtc"].isString()) {
             return reject("成绩字段类型无效");
         }
-        // v1 是同结构的单人历史格式；缺少 mode/resultConfirmed 时进行明确迁移。
-        if (schema == 1 && record.mode != GameMode::Solo)
-            return reject("旧版成绩不能声明联机模式");
         record.finishedAtUtc =
             QDateTime::fromString(item["finishedAtUtc"].toString(), Qt::ISODateWithMs).toUTC();
         if (item.contains("resultConfirmed") && !item["resultConfirmed"].isBool())
@@ -325,7 +354,7 @@ bool RecordRepository::saveOnce(const PlayRecord &record, QString *error) {
     QJsonArray array;
     for (const auto &item : candidate)
         array.append(recordJson(item));
-    const auto bytes = QJsonDocument(QJsonObject{{"schemaVersion", 2}, {"records", array}})
+    const auto bytes = QJsonDocument(QJsonObject{{"schemaVersion", CurrentRecordsSchema}, {"records", array}})
                            .toJson(QJsonDocument::Indented);
     if (file.write(bytes) != bytes.size() || !file.commit())
         return fail(error, "保存成绩失败：" + file.errorString());

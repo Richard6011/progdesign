@@ -476,12 +476,14 @@ void MainWindow::buildUi() {
     auto *helpLayout = new QVBoxLayout(helpPage);
     helpLayout->setContentsMargins(60, 45, 60, 45);
     helpLayout->addWidget(heading("操作与规则"));
+    const JudgeConfig judge;
     auto *helpText = new QLabel(
-        "D / F / J / K 对应四条轨道。\n在判定线附近按下音符，长按音符保持到尾部。\nPerfect "
-        "±45ms，Great ±90ms，Good ±140ms；漏击会清零 Combo。\n分数按 Perfect 1000、Great 700、Good "
-        "400 计算。\n单人按 Esc 暂停，继续时请重新按住活动长按。联机失焦或 Esc "
-        "会中止本局。\n\n当前演示曲目包含 Easy、Normal、Hard 三份独立谱面。",
-        helpPage);
+        QStringLiteral("D / F / J / K 对应四条轨道。\n在判定线附近按下音符，长按音符保持到尾部。\n"
+                       "Perfect ±%1ms，Great ±%2ms，Good ±%3ms；漏击会清零 Combo。\n"
+                       "分数按 Perfect 1000、Great 700、Good 400 计算。\n"
+                       "单人按 Esc 暂停，继续时请重新按住活动长按。联机失焦或 Esc 会中止本局。\n\n"
+                       "初次游玩建议选择《小星星》Easy，每首歌曲都有三份独立难度谱面。")
+            .arg(judge.perfectMs).arg(judge.greatMs).arg(judge.goodMs), helpPage);
     helpText->setWordWrap(true);
     helpLayout->addWidget(helpText);
     helpLayout->addStretch();
@@ -573,7 +575,7 @@ void MainWindow::onAudioLoaded() {
     qint64 lastMs = 0;
     for (const auto &note : chart_.notes)
         lastMs = qMax(lastMs, note.endTimeMs);
-    if (audio_.durationMs() < lastMs + 140) {
+    if (audio_.durationMs() < lastMs + JudgeConfig{}.goodMs) {
         abortRun("音频实际时长不足以覆盖完整谱面");
         return;
     }

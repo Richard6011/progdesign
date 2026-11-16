@@ -45,7 +45,7 @@ QJsonObject config()
 {
     return {{"songId", "demo"}, {"chartId", "demo-normal"}, {"chartVersion", 1},
         {"difficulty", "Normal"}, {"chartHash", QString(64, 'a')}, {"audioHash", QString(64, 'b')},
-        {"rulesVersion", "1"}, {"noteCount", 6}};
+        {"rulesVersion", JudgeConfig{}.rulesVersion}, {"noteCount", 6}};
 }
 
 void protocolTests()
@@ -127,6 +127,10 @@ void sessionTests()
     mismatch["audioHash"] = QString(64, 'c');
     guest.setLocalResources(mismatch, true);
     check(!guest.setReady(true), "audio mismatch blocks ready");
+    mismatch = config();
+    mismatch["rulesVersion"] = "1";
+    guest.setLocalResources(mismatch, true);
+    check(!guest.setReady(true), "previous judgement rules cannot prepare for a new-rules match");
     guest.setLocalResources(config(), true);
     check(host.setReady(true) && guest.setReady(true), "both ready accepted");
     check(until([&] { return host.peerReady() && guest.peerReady() && guest.clockRttMs() >= 0; }),

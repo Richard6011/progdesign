@@ -120,6 +120,11 @@ public:
                 "both UI clients load the real song index")) {
             return 1;
         }
+        const int hostTwinkle = host.songBox_->findData("twinkle-star");
+        const int guestTwinkle = guest.songBox_->findData("twinkle-star");
+        if (!check(hostTwinkle >= 0 && guestTwinkle >= 0, "both clients list Twinkle Star")) return 1;
+        host.songBox_->setCurrentIndex(hostTwinkle);
+        guest.songBox_->setCurrentIndex(guestTwinkle);
         host.enterLan(false);
         guest.enterLan(false);
         if (!check(host.lan_.createRoom(0, host.settings_.playerName), "UI host creates a TCP room")) {

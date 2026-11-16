@@ -5,7 +5,7 @@
 int main(int argc, char *argv[]) {
     QApplication application(argc, argv);
     QApplication::setApplicationName(QStringLiteral("音符碰撞"));
-    QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QApplication::setApplicationVersion(QStringLiteral("0.2.0"));
     QApplication::setOrganizationName(QStringLiteral("NoteCollision"));
 
     nc::MainWindow window;
