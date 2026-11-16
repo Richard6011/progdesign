@@ -32,6 +32,7 @@ AudioService::AudioService(QObject *parent) : QObject(parent) {
                     emit failed(message);
             });
 }
+// 预加载完成后，调用play()才会真正开始播放。
 
 void AudioService::load(const QString &path) {
     stop();
