@@ -40,7 +40,6 @@ pwsh -NoProfile -File .\tools\Development.ps1 -Action Package
 - 需求、设计与当前规则：[音符碰撞总体开发文档](docs/音符碰撞总体开发文档.md)。
 - 实际进度与验证：[实现与验证记录](docs/实现与验证记录.md)。
 
-当前自动化测试包含确定性判定、真实文件存储、网络协议、原始 socket 异常输入以及真实媒体的单人和本机双客户端流程。两台实体电脑的声画同步和真实键盘双押/三押仍需设备实测。
 =======
 # progdesign
 >>>>>>> origin/main
