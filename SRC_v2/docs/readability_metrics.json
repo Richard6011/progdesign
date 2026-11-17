@@ -1,0 +1,1000 @@
+{
+  "files": [
+    {
+      "file": "assets.c",
+      "physical": 131,
+      "code": 123,
+      "functions": 7,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "audio.c",
+      "physical": 87,
+      "code": 78,
+      "functions": 8,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "crypto.c",
+      "physical": 59,
+      "code": 56,
+      "functions": 3,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "engine.c",
+      "physical": 240,
+      "code": 226,
+      "functions": 13,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "game.h",
+      "physical": 130,
+      "code": 115,
+      "functions": 0,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "main.c",
+      "physical": 26,
+      "code": 25,
+      "functions": 1,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "storage.c",
+      "physical": 382,
+      "code": 365,
+      "functions": 16,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "tests/test_basic.c",
+      "physical": 380,
+      "code": 361,
+      "functions": 16,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "ui.c",
+      "physical": 849,
+      "code": 806,
+      "functions": 40,
+      "missing_chinese_comments": []
+    },
+    {
+      "file": "ui.h",
+      "physical": 8,
+      "code": 6,
+      "functions": 0,
+      "missing_chinese_comments": []
+    }
+  ],
+  "functions": [
+    {
+      "file": "assets.c",
+      "name": "song_title",
+      "ccn": 3,
+      "start": 9,
+      "end": 14,
+      "nloc": 6
+    },
+    {
+      "file": "assets.c",
+      "name": "difficulty_title",
+      "ccn": 3,
+      "start": 16,
+      "end": 21,
+      "nloc": 6
+    },
+    {
+      "file": "assets.c",
+      "name": "audio_path",
+      "ccn": 3,
+      "start": 23,
+      "end": 28,
+      "nloc": 6
+    },
+    {
+      "file": "assets.c",
+      "name": "note_valid",
+      "ccn": 10,
+      "start": 30,
+      "end": 41,
+      "nloc": 12
+    },
+    {
+      "file": "assets.c",
+      "name": "note_before",
+      "ccn": 3,
+      "start": 43,
+      "end": 50,
+      "nloc": 8
+    },
+    {
+      "file": "assets.c",
+      "name": "chart_check",
+      "ccn": 11,
+      "start": 52,
+      "end": 77,
+      "nloc": 26
+    },
+    {
+      "file": "assets.c",
+      "name": "chart_load",
+      "ccn": 23,
+      "start": 79,
+      "end": 131,
+      "nloc": 53
+    },
+    {
+      "file": "audio.c",
+      "name": "music_command",
+      "ccn": 2,
+      "start": 11,
+      "end": 20,
+      "nloc": 10
+    },
+    {
+      "file": "audio.c",
+      "name": "music_close",
+      "ccn": 2,
+      "start": 22,
+      "end": 27,
+      "nloc": 6
+    },
+    {
+      "file": "audio.c",
+      "name": "music_open",
+      "ccn": 8,
+      "start": 29,
+      "end": 56,
+      "nloc": 28
+    },
+    {
+      "file": "audio.c",
+      "name": "music_play",
+      "ccn": 1,
+      "start": 58,
+      "end": 61,
+      "nloc": 4
+    },
+    {
+      "file": "audio.c",
+      "name": "music_pause",
+      "ccn": 1,
+      "start": 63,
+      "end": 66,
+      "nloc": 4
+    },
+    {
+      "file": "audio.c",
+      "name": "music_resume",
+      "ccn": 1,
+      "start": 68,
+      "end": 71,
+      "nloc": 4
+    },
+    {
+      "file": "audio.c",
+      "name": "music_position",
+      "ccn": 3,
+      "start": 73,
+      "end": 79,
+      "nloc": 7
+    },
+    {
+      "file": "audio.c",
+      "name": "music_stopped",
+      "ccn": 3,
+      "start": 81,
+      "end": 87,
+      "nloc": 7
+    },
+    {
+      "file": "crypto.c",
+      "name": "text_valid",
+      "ccn": 6,
+      "start": 8,
+      "end": 22,
+      "nloc": 15
+    },
+    {
+      "file": "crypto.c",
+      "name": "make_salt",
+      "ccn": 3,
+      "start": 24,
+      "end": 34,
+      "nloc": 11
+    },
+    {
+      "file": "crypto.c",
+      "name": "password_hash",
+      "ccn": 6,
+      "start": 36,
+      "end": 59,
+      "nloc": 24
+    },
+    {
+      "file": "engine.c",
+      "name": "stats_add",
+      "ccn": 8,
+      "start": 5,
+      "end": 35,
+      "nloc": 31
+    },
+    {
+      "file": "engine.c",
+      "name": "stats_result",
+      "ccn": 7,
+      "start": 37,
+      "end": 54,
+      "nloc": 18
+    },
+    {
+      "file": "engine.c",
+      "name": "stats_valid",
+      "ccn": 19,
+      "start": 56,
+      "end": 77,
+      "nloc": 22
+    },
+    {
+      "file": "engine.c",
+      "name": "game_start",
+      "ccn": 2,
+      "start": 79,
+      "end": 92,
+      "nloc": 14
+    },
+    {
+      "file": "engine.c",
+      "name": "finish_note",
+      "ccn": 4,
+      "start": 94,
+      "end": 103,
+      "nloc": 10
+    },
+    {
+      "file": "engine.c",
+      "name": "due_time",
+      "ccn": 3,
+      "start": 105,
+      "end": 112,
+      "nloc": 8
+    },
+    {
+      "file": "engine.c",
+      "name": "next_due",
+      "ccn": 4,
+      "start": 114,
+      "end": 129,
+      "nloc": 16
+    },
+    {
+      "file": "engine.c",
+      "name": "game_update",
+      "ccn": 6,
+      "start": 131,
+      "end": 148,
+      "nloc": 18
+    },
+    {
+      "file": "engine.c",
+      "name": "judge_grade",
+      "ccn": 5,
+      "start": 150,
+      "end": 161,
+      "nloc": 12
+    },
+    {
+      "file": "engine.c",
+      "name": "game_press",
+      "ccn": 14,
+      "start": 163,
+      "end": 200,
+      "nloc": 38
+    },
+    {
+      "file": "engine.c",
+      "name": "game_release",
+      "ccn": 9,
+      "start": 202,
+      "end": 219,
+      "nloc": 18
+    },
+    {
+      "file": "engine.c",
+      "name": "game_pause",
+      "ccn": 1,
+      "start": 221,
+      "end": 225,
+      "nloc": 5
+    },
+    {
+      "file": "engine.c",
+      "name": "game_resume",
+      "ccn": 5,
+      "start": 227,
+      "end": 240,
+      "nloc": 14
+    },
+    {
+      "file": "main.c",
+      "name": "wWinMain",
+      "ccn": 6,
+      "start": 5,
+      "end": 26,
+      "nloc": 22
+    },
+    {
+      "file": "storage.c",
+      "name": "fail",
+      "ccn": 1,
+      "start": 11,
+      "end": 15,
+      "nloc": 5
+    },
+    {
+      "file": "storage.c",
+      "name": "storage_folder",
+      "ccn": 1,
+      "start": 17,
+      "end": 20,
+      "nloc": 4
+    },
+    {
+      "file": "storage.c",
+      "name": "file_path",
+      "ccn": 1,
+      "start": 22,
+      "end": 25,
+      "nloc": 4
+    },
+    {
+      "file": "storage.c",
+      "name": "open_write",
+      "ccn": 4,
+      "start": 27,
+      "end": 41,
+      "nloc": 15
+    },
+    {
+      "file": "storage.c",
+      "name": "finish_write",
+      "ccn": 5,
+      "start": 43,
+      "end": 63,
+      "nloc": 21
+    },
+    {
+      "file": "storage.c",
+      "name": "trim_newline",
+      "ccn": 1,
+      "start": 65,
+      "end": 68,
+      "nloc": 4
+    },
+    {
+      "file": "storage.c",
+      "name": "accounts_load",
+      "ccn": 17,
+      "start": 70,
+      "end": 122,
+      "nloc": 53
+    },
+    {
+      "file": "storage.c",
+      "name": "account_input",
+      "ccn": 5,
+      "start": 124,
+      "end": 132,
+      "nloc": 9
+    },
+    {
+      "file": "storage.c",
+      "name": "account_register",
+      "ccn": 10,
+      "start": 134,
+      "end": 165,
+      "nloc": 32
+    },
+    {
+      "file": "storage.c",
+      "name": "account_login",
+      "ccn": 7,
+      "start": 167,
+      "end": 189,
+      "nloc": 23
+    },
+    {
+      "file": "storage.c",
+      "name": "record_valid",
+      "ccn": 6,
+      "start": 191,
+      "end": 200,
+      "nloc": 10
+    },
+    {
+      "file": "storage.c",
+      "name": "records_load",
+      "ccn": 27,
+      "start": 202,
+      "end": 266,
+      "nloc": 65
+    },
+    {
+      "file": "storage.c",
+      "name": "record_save",
+      "ccn": 12,
+      "start": 268,
+      "end": 309,
+      "nloc": 42
+    },
+    {
+      "file": "storage.c",
+      "name": "ranking_make",
+      "ccn": 7,
+      "start": 311,
+      "end": 337,
+      "nloc": 27
+    },
+    {
+      "file": "storage.c",
+      "name": "settings_load",
+      "ccn": 12,
+      "start": 339,
+      "end": 370,
+      "nloc": 32
+    },
+    {
+      "file": "storage.c",
+      "name": "settings_save",
+      "ccn": 6,
+      "start": 372,
+      "end": 382,
+      "nloc": 11
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "check",
+      "ccn": 2,
+      "start": 15,
+      "end": 23,
+      "nloc": 9
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "one_note",
+      "ccn": 2,
+      "start": 25,
+      "end": 35,
+      "nloc": 11
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_scores",
+      "ccn": 3,
+      "start": 37,
+      "end": 64,
+      "nloc": 28
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_boundaries",
+      "ccn": 3,
+      "start": 66,
+      "end": 109,
+      "nloc": 44
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_holds_and_pause",
+      "ccn": 3,
+      "start": 111,
+      "end": 145,
+      "nloc": 35
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "replay_chart",
+      "ccn": 8,
+      "start": 156,
+      "end": 196,
+      "nloc": 41
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_resources",
+      "ccn": 3,
+      "start": 198,
+      "end": 212,
+      "nloc": 15
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_file_path",
+      "ccn": 1,
+      "start": 214,
+      "end": 217,
+      "nloc": 4
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "write_test_file",
+      "ccn": 1,
+      "start": 219,
+      "end": 228,
+      "nloc": 10
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "read_test_file",
+      "ccn": 1,
+      "start": 230,
+      "end": 242,
+      "nloc": 13
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_accounts",
+      "ccn": 1,
+      "start": 244,
+      "end": 268,
+      "nloc": 25
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "make_record",
+      "ccn": 2,
+      "start": 270,
+      "end": 280,
+      "nloc": 11
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_records",
+      "ccn": 1,
+      "start": 282,
+      "end": 310,
+      "nloc": 29
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_settings",
+      "ccn": 4,
+      "start": 312,
+      "end": 333,
+      "nloc": 22
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "test_audio",
+      "ccn": 1,
+      "start": 335,
+      "end": 354,
+      "nloc": 20
+    },
+    {
+      "file": "tests/test_basic.c",
+      "name": "main",
+      "ccn": 1,
+      "start": 356,
+      "end": 380,
+      "nloc": 25
+    },
+    {
+      "file": "ui.c",
+      "name": "to_wide",
+      "ccn": 2,
+      "start": 72,
+      "end": 76,
+      "nloc": 5
+    },
+    {
+      "file": "ui.c",
+      "name": "show_error",
+      "ccn": 1,
+      "start": 78,
+      "end": 83,
+      "nloc": 6
+    },
+    {
+      "file": "ui.c",
+      "name": "control",
+      "ccn": 1,
+      "start": 85,
+      "end": 91,
+      "nloc": 7
+    },
+    {
+      "file": "ui.c",
+      "name": "label",
+      "ccn": 1,
+      "start": 93,
+      "end": 96,
+      "nloc": 4
+    },
+    {
+      "file": "ui.c",
+      "name": "label_utf8",
+      "ccn": 1,
+      "start": 98,
+      "end": 103,
+      "nloc": 6
+    },
+    {
+      "file": "ui.c",
+      "name": "button",
+      "ccn": 1,
+      "start": 105,
+      "end": 108,
+      "nloc": 4
+    },
+    {
+      "file": "ui.c",
+      "name": "new_page",
+      "ccn": 2,
+      "start": 110,
+      "end": 122,
+      "nloc": 13
+    },
+    {
+      "file": "ui.c",
+      "name": "show_login",
+      "ccn": 5,
+      "start": 124,
+      "end": 149,
+      "nloc": 26
+    },
+    {
+      "file": "ui.c",
+      "name": "read_text",
+      "ccn": 2,
+      "start": 151,
+      "end": 161,
+      "nloc": 11
+    },
+    {
+      "file": "ui.c",
+      "name": "login_command",
+      "ccn": 10,
+      "start": 163,
+      "end": 210,
+      "nloc": 48
+    },
+    {
+      "file": "ui.c",
+      "name": "show_home",
+      "ccn": 1,
+      "start": 212,
+      "end": 225,
+      "nloc": 14
+    },
+    {
+      "file": "ui.c",
+      "name": "show_songs",
+      "ccn": 1,
+      "start": 227,
+      "end": 234,
+      "nloc": 8
+    },
+    {
+      "file": "ui.c",
+      "name": "show_difficulties",
+      "ccn": 1,
+      "start": 236,
+      "end": 247,
+      "nloc": 12
+    },
+    {
+      "file": "ui.c",
+      "name": "start_game",
+      "ccn": 3,
+      "start": 249,
+      "end": 270,
+      "nloc": 22
+    },
+    {
+      "file": "ui.c",
+      "name": "abort_game",
+      "ccn": 1,
+      "start": 272,
+      "end": 277,
+      "nloc": 6
+    },
+    {
+      "file": "ui.c",
+      "name": "try_resume",
+      "ccn": 5,
+      "start": 279,
+      "end": 294,
+      "nloc": 16
+    },
+    {
+      "file": "ui.c",
+      "name": "pause_game",
+      "ccn": 5,
+      "start": 296,
+      "end": 324,
+      "nloc": 29
+    },
+    {
+      "file": "ui.c",
+      "name": "finish_game",
+      "ccn": 1,
+      "start": 326,
+      "end": 340,
+      "nloc": 15
+    },
+    {
+      "file": "ui.c",
+      "name": "update_game",
+      "ccn": 9,
+      "start": 342,
+      "end": 385,
+      "nloc": 44
+    },
+    {
+      "file": "ui.c",
+      "name": "show_result",
+      "ccn": 3,
+      "start": 387,
+      "end": 400,
+      "nloc": 14
+    },
+    {
+      "file": "ui.c",
+      "name": "refresh_ranking",
+      "ccn": 5,
+      "start": 402,
+      "end": 434,
+      "nloc": 33
+    },
+    {
+      "file": "ui.c",
+      "name": "show_ranking",
+      "ccn": 3,
+      "start": 436,
+      "end": 460,
+      "nloc": 25
+    },
+    {
+      "file": "ui.c",
+      "name": "show_settings",
+      "ccn": 2,
+      "start": 462,
+      "end": 477,
+      "nloc": 16
+    },
+    {
+      "file": "ui.c",
+      "name": "read_number",
+      "ccn": 6,
+      "start": 479,
+      "end": 491,
+      "nloc": 13
+    },
+    {
+      "file": "ui.c",
+      "name": "save_settings_page",
+      "ccn": 5,
+      "start": 493,
+      "end": 513,
+      "nloc": 21
+    },
+    {
+      "file": "ui.c",
+      "name": "show_help",
+      "ccn": 1,
+      "start": 515,
+      "end": 521,
+      "nloc": 7
+    },
+    {
+      "file": "ui.c",
+      "name": "home_command",
+      "ccn": 6,
+      "start": 523,
+      "end": 546,
+      "nloc": 24
+    },
+    {
+      "file": "ui.c",
+      "name": "selection_command",
+      "ccn": 9,
+      "start": 548,
+      "end": 569,
+      "nloc": 22
+    },
+    {
+      "file": "ui.c",
+      "name": "result_command",
+      "ccn": 5,
+      "start": 571,
+      "end": 588,
+      "nloc": 18
+    },
+    {
+      "file": "ui.c",
+      "name": "on_command",
+      "ccn": 14,
+      "start": 590,
+      "end": 617,
+      "nloc": 28
+    },
+    {
+      "file": "ui.c",
+      "name": "key_lane",
+      "ccn": 5,
+      "start": 619,
+      "end": 630,
+      "nloc": 12
+    },
+    {
+      "file": "ui.c",
+      "name": "on_key",
+      "ccn": 13,
+      "start": 632,
+      "end": 657,
+      "nloc": 26
+    },
+    {
+      "file": "ui.c",
+      "name": "fill_rectangle",
+      "ccn": 1,
+      "start": 659,
+      "end": 665,
+      "nloc": 7
+    },
+    {
+      "file": "ui.c",
+      "name": "draw_text",
+      "ccn": 1,
+      "start": 667,
+      "end": 673,
+      "nloc": 7
+    },
+    {
+      "file": "ui.c",
+      "name": "note_y",
+      "ccn": 1,
+      "start": 675,
+      "end": 678,
+      "nloc": 4
+    },
+    {
+      "file": "ui.c",
+      "name": "draw_notes",
+      "ccn": 10,
+      "start": 680,
+      "end": 708,
+      "nloc": 29
+    },
+    {
+      "file": "ui.c",
+      "name": "draw_game",
+      "ccn": 8,
+      "start": 710,
+      "end": 749,
+      "nloc": 40
+    },
+    {
+      "file": "ui.c",
+      "name": "paint_window",
+      "ccn": 2,
+      "start": 751,
+      "end": 772,
+      "nloc": 22
+    },
+    {
+      "file": "ui.c",
+      "name": "window_proc",
+      "ccn": 13,
+      "start": 774,
+      "end": 812,
+      "nloc": 39
+    },
+    {
+      "file": "ui.c",
+      "name": "ui_run",
+      "ccn": 8,
+      "start": 814,
+      "end": 849,
+      "nloc": 36
+    }
+  ],
+  "production": {
+    "files": 9,
+    "physical": 1912,
+    "code": 1800,
+    "functions": 88,
+    "average_ccn": 5.47,
+    "median_ccn": 4.5,
+    "maximum_ccn": 27
+  },
+  "top_functions": [
+    {
+      "file": "storage.c",
+      "name": "records_load",
+      "ccn": 27,
+      "start": 202,
+      "end": 266,
+      "nloc": 65
+    },
+    {
+      "file": "assets.c",
+      "name": "chart_load",
+      "ccn": 23,
+      "start": 79,
+      "end": 131,
+      "nloc": 53
+    },
+    {
+      "file": "engine.c",
+      "name": "stats_valid",
+      "ccn": 19,
+      "start": 56,
+      "end": 77,
+      "nloc": 22
+    },
+    {
+      "file": "storage.c",
+      "name": "accounts_load",
+      "ccn": 17,
+      "start": 70,
+      "end": 122,
+      "nloc": 53
+    },
+    {
+      "file": "engine.c",
+      "name": "game_press",
+      "ccn": 14,
+      "start": 163,
+      "end": 200,
+      "nloc": 38
+    },
+    {
+      "file": "ui.c",
+      "name": "on_command",
+      "ccn": 14,
+      "start": 590,
+      "end": 617,
+      "nloc": 28
+    },
+    {
+      "file": "ui.c",
+      "name": "on_key",
+      "ccn": 13,
+      "start": 632,
+      "end": 657,
+      "nloc": 26
+    },
+    {
+      "file": "ui.c",
+      "name": "window_proc",
+      "ccn": 13,
+      "start": 774,
+      "end": 812,
+      "nloc": 39
+    },
+    {
+      "file": "storage.c",
+      "name": "record_save",
+      "ccn": 12,
+      "start": 268,
+      "end": 309,
+      "nloc": 42
+    },
+    {
+      "file": "storage.c",
+      "name": "settings_load",
+      "ccn": 12,
+      "start": 339,
+      "end": 370,
+      "nloc": 32
+    }
+  ],
+  "all_nonempty_code_lines_have_chinese_comments": true
+}

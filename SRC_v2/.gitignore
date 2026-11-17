@@ -1,0 +1,9 @@
+build/
+data/*
+!data/.gitkeep
+ui_test_data/
+tests/run_*/
+*.exe
+!/NoteCollisionV2.exe
+*.obj
+*.pdb
