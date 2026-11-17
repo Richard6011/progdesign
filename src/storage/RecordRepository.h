@@ -27,7 +27,6 @@ class RecordRepository {
   private:
     QString dataDir_;
     std::vector<PlayRecord> records_;
-    bool loaded_ = false;
     bool writable_ = true;
     QString loadError_;
 };

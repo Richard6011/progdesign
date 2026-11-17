@@ -76,13 +76,7 @@ bool readStats(const QJsonObject &o, int noteCount, bool complete, PlayStats &ou
     s.maxCombo = o.value("maxCombo").toInt();
     s.finalizedCount = o.value("finalizedCount").toInt();
     s.earnedUnits = static_cast<qint64>(o.value("earnedUnits").toDouble());
-    const int successful = s.perfect + s.great + s.good;
-    if (successful + s.miss != s.finalizedCount || s.combo > s.maxCombo ||
-        s.maxCombo > successful ||
-        s.earnedUnits != 1000LL * s.perfect + 700LL * s.great + 400LL * s.good ||
-        (complete && s.finalizedCount != noteCount) ||
-        (s.miss == 0 && (s.combo != successful || s.maxCombo != successful)) ||
-        !ScoreService::isValidStats(s, noteCount, complete))
+    if (!ScoreService::isValidStats(s, noteCount, complete))
         return false;
     out = s;
     return true;

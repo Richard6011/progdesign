@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 音符碰撞
 
 C++17 / Qt 6.8.3 四轨节奏游戏，包含单人和局域网双人模式。
@@ -7,7 +6,7 @@ C++17 / Qt 6.8.3 四轨节奏游戏，包含单人和局域网双人模式。
 
 使用 VS Code 的 **程序设计** Profile。工具路径沿用已有配置：Qt 位于 `D:/Qt/6.8.3/mingw_64`，MinGW 位于 `D:/Qt/Tools/mingw1310_64`，CMake 3.31.10 和 Ninja 使用已安装版本。
 
-当前工作入口为 `C:/Users/Administrator/Desktop/progdesign/code`。由于当前桌面应用仍占用原工作目录，`progdesign` 暂为指向原目录的 Windows 目录联接，两种路径访问同一份文件。关闭占用原目录的应用后，可从桌面的另一个 PowerShell 窗口执行 `tools/Rename-Workspace.ps1` 完成物理改名；脚本验证路径并在失败时恢复联接，不删除项目内容。
+当前工作入口为 `C:/Users/Administrator/Desktop/progdesign/code`。该目录已完成物理改名；开发脚本中的英文路径用于构建和调试。
 
 ```powershell
 pwsh -NoProfile -File .\tools\Development.ps1 -Action Open
@@ -17,11 +16,15 @@ pwsh -NoProfile -File .\tools\Development.ps1 -Action Run
 pwsh -NoProfile -File .\tools\Development.ps1 -Action Package
 ```
 
-可加 `-PackageName NoteCollision-v0.2.0` 生成独立版本目录和同名压缩包，方便与正在运行的旧包并存。本次新版包位于 `out/NoteCollision-v0.2.0-Windows-x64.zip`，完整解压即可发给朋友联机。
+可加 `-PackageName NoteCollision-login` 生成独立版本目录和同名压缩包，方便与正在运行的旧包并存。本次登录版运行包位于 `out/NoteCollision-login-Windows-x64.zip`，完整解压即可发给朋友联机。
 
 也可在该 Profile 中打开项目，使用 `Ctrl+Shift+B` 构建、`F5` 调试。构建目录必须使用英文路径；本机 Qt moc 对中文输出路径不能正确处理。脚本从英文工作入口配置 CMake Presets，构建产物保存在 `build/qt-debug` 或 `build/qt-release`，可携带文件输出到 `out/NoteCollision`。
 
 ## 使用
+
+启动先登录；没有账号时选择“没有账号，注册一个”，注册完成后输入密码登录。账号名作为游戏昵称，用于成绩保存和联机显示；更换账号请退出程序后重新登录。
+
+账号存放在 `%APPDATA%/NoteCollision/音符碰撞/accounts.txt`，UTF-8 编码，每行为“账号、制表符、明文密码”。账号为1—16个字符，密码为1—64个字符，不能包含制表符、换行或控制字符；密码中的空格按原样匹配。账号仅在本机保存，两台电脑分别注册并登录即可联机。
 
 选择曲目和 Easy / Normal / Hard，按 D、F、J、K 对应四条轨道。单点一次击打，长按保持至尾部，连锁节点与同时按键分别判定。单人按 Esc 暂停，继续时重新按住活动长按；重开和返回选曲不保存未完成局。
 
@@ -41,6 +44,5 @@ pwsh -NoProfile -File .\tools\Development.ps1 -Action Package
 - 实际进度与验证：[实现与验证记录](docs/实现与验证记录.md)。
 
 当前自动化测试包含确定性判定、真实文件存储、网络协议、原始 socket 异常输入以及真实媒体的单人和本机双客户端流程。两台实体电脑的声画同步和真实键盘双押/三押仍需设备实测。
-=======
-# progdesign
->>>>>>> origin/main
+
+本次已将主窗口页面构建移至 `MainWindowUi.cpp`，按八个页面拆分函数，并精简计分、排行榜和联机的重复检查。模块职责与原始行数见 [代码结构与精简建议](docs/代码结构与精简建议.md)。

@@ -28,7 +28,8 @@ class GameWidget;
 class MainWindow : public QMainWindow {
     Q_OBJECT
   public:
-    explicit MainWindow(QWidget *parent = nullptr, const QString &dataDirectory = {});
+    explicit MainWindow(QWidget *parent = nullptr, const QString &dataDirectory = {},
+                        const QString &accountName = {});
     ~MainWindow() override = default;
 
   protected:
@@ -51,12 +52,22 @@ class MainWindow : public QMainWindow {
     };
 
     void buildUi();
+    void buildHomePage();
+    void buildPreparePage();
+    void buildLobbyPage();
+    void buildGamePage();
+    void buildResultPage();
+    void buildRankingPage();
+    void buildSettingsPage();
+    void buildHelpPage();
+
     void showPage(Page page);
     void showPreparation();
     bool loadSelection(int songIndex, const QString &difficulty);
     void updatePreview();
+    bool updatePlayerName();
     void startSolo();
-    void enterLan(bool host);
+    void enterLan();
     void loadRoomConfig(const QJsonObject &config);
     QJsonObject resourceConfig() const;
     void applyRoomSelection();
@@ -82,6 +93,7 @@ class MainWindow : public QMainWindow {
     SettingsRepository settingsRepository_;
     RecordRepository records_;
     AppSettings settings_;
+    QString accountName_; // 登录账号；正式入口验证后传入，作为成绩和联机的玩家名。
     AudioService audio_;
     LanSessionService lan_;
     GameEngine engine_;

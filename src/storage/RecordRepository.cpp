@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QSaveFile>
 #include <QSet>
 #include <QStandardPaths>
@@ -46,14 +47,9 @@ QString recordKey(const PlayRecord &record) {
            (record.mode == GameMode::Solo ? record.sessionId
                                           : record.matchId + ":" + record.playerId);
 }
-bool parseMode(const QJsonValue &value, GameMode *mode, bool missingMeansSolo = false) {
-    if (!value.isString()) {
-        if (missingMeansSolo && value.isUndefined()) {
-            *mode = GameMode::Solo;
-            return true;
-        }
+bool parseMode(const QJsonValue &value, GameMode *mode) {
+    if (!value.isString())
         return false;
-    }
     if (value.toString() == "Solo") {
         *mode = GameMode::Solo;
         return true;
@@ -221,7 +217,6 @@ QString RecordRepository::filePath() const {
 
 bool RecordRepository::load(QString *error) {
     records_.clear();
-    loaded_ = true;
     writable_ = true;
     loadError_.clear();
     if (!QFile::exists(filePath())) {
@@ -365,38 +360,27 @@ bool RecordRepository::saveOnce(const PlayRecord &record, QString *error) {
 }
 
 std::vector<RankingEntry> RecordRepository::queryRanking(const PlayRecord &boardKey) const {
-    std::vector<PlayRecord> candidates;
+    const auto better = [](const PlayRecord &a, const PlayRecord &b) {
+        if (a.score != b.score)
+            return a.score > b.score;
+        if (a.finishedAtUtc != b.finishedAtUtc)
+            return a.finishedAtUtc < b.finishedAtUtc;
+        return recordKey(a) < recordKey(b);
+    };
+    QMap<QString, PlayRecord> bestByPlayer;
     for (const auto &record : records_)
-        if (sameBoard(record, boardKey))
-            candidates.push_back(record);
-    std::sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
-        if (a.playerName != b.playerName)
-            return a.playerName < b.playerName;
-        if (a.score != b.score)
-            return a.score > b.score;
-        if (a.finishedAtUtc != b.finishedAtUtc)
-            return a.finishedAtUtc < b.finishedAtUtc;
-        return recordKey(a) < recordKey(b);
-    });
+        if (sameBoard(record, boardKey)) {
+            auto existing = bestByPlayer.find(record.playerName);
+            if (existing == bestByPlayer.end() || better(record, existing.value()))
+                bestByPlayer.insert(record.playerName, record);
+        }
+
     std::vector<PlayRecord> best;
-    for (const auto &candidate : candidates) {
-        auto existing = std::find_if(best.begin(), best.end(), [&](const auto &item) {
-            return item.playerName == candidate.playerName;
-        });
-        if (existing == best.end())
-            best.push_back(candidate);
-        else if (candidate.score > existing->score ||
-                 (candidate.score == existing->score &&
-                  candidate.finishedAtUtc < existing->finishedAtUtc))
-            *existing = candidate;
-    }
-    std::sort(best.begin(), best.end(), [](const auto &a, const auto &b) {
-        if (a.score != b.score)
-            return a.score > b.score;
-        if (a.finishedAtUtc != b.finishedAtUtc)
-            return a.finishedAtUtc < b.finishedAtUtc;
-        return recordKey(a) < recordKey(b);
-    });
+    best.reserve(static_cast<std::size_t>(bestByPlayer.size()));
+    for (auto it = bestByPlayer.cbegin(); it != bestByPlayer.cend(); ++it)
+        best.push_back(it.value());
+
+    std::sort(best.begin(), best.end(), better);
     std::vector<RankingEntry> result;
     int rank = 0;
     int previousScore = -1;

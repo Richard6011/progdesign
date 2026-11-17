@@ -11,6 +11,11 @@ target_include_directories(DataResetTests PRIVATE ../src)
 target_link_libraries(DataResetTests PRIVATE Qt6::Core)
 add_test(NAME DataResetTests COMMAND DataResetTests)
 
+add_executable(AccountTests storage/AccountTests.cpp ../src/storage/AccountRepository.cpp)
+target_include_directories(AccountTests PRIVATE ../src)
+target_link_libraries(AccountTests PRIVATE Qt6::Core)
+add_test(NAME AccountTests COMMAND AccountTests)
+
 foreach(test_name IN ITEMS NetworkTests NetworkReviewTests)
     add_executable(${test_name} network/${test_name}.cpp
         ../src/network/ProtocolCodec.cpp ../src/network/ClockSynchronizer.cpp
@@ -19,6 +24,13 @@ foreach(test_name IN ITEMS NetworkTests NetworkReviewTests)
     target_link_libraries(${test_name} PRIVATE Qt6::Core Qt6::Network)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+add_executable(LoginDialogTests ui/LoginDialogTests.cpp
+    ../src/ui/LoginDialog.cpp ../src/storage/AccountRepository.cpp)
+target_include_directories(LoginDialogTests PRIVATE ../src)
+target_link_libraries(LoginDialogTests PRIVATE Qt6::Widgets)
+add_test(NAME LoginDialogTests COMMAND LoginDialogTests "${PROJECT_SOURCE_DIR}/build/evidence")
+set_tests_properties(LoginDialogTests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 file(GLOB_RECURSE ui_support_sources CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/src/*.cpp" "${PROJECT_SOURCE_DIR}/src/*.h")
 list(FILTER ui_support_sources EXCLUDE REGEX "/main\\.cpp$")

@@ -33,8 +33,8 @@ public:
             std::cerr << "FAIL isolated LAN data directories could not be created\n";
             return 1;
         }
-        MainWindow host(nullptr, hostData.path());
-        MainWindow guest(nullptr, guestData.path());
+        MainWindow host(nullptr, hostData.path(), QStringLiteral("界面房主"));
+        MainWindow guest(nullptr, guestData.path(), QStringLiteral("界面客人"));
         int failures = 0;
         const auto check = [&](const bool condition, const char* description) {
             std::cout << (condition ? "PASS " : "FAIL ") << description << std::endl;
@@ -125,8 +125,8 @@ public:
         if (!check(hostTwinkle >= 0 && guestTwinkle >= 0, "both clients list Twinkle Star")) return 1;
         host.songBox_->setCurrentIndex(hostTwinkle);
         guest.songBox_->setCurrentIndex(guestTwinkle);
-        host.enterLan(false);
-        guest.enterLan(false);
+        host.enterLan();
+        guest.enterLan();
         if (!check(host.lan_.createRoom(0, host.settings_.playerName), "UI host creates a TCP room")) {
             return 1;
         }

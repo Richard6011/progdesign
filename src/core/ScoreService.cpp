@@ -22,23 +22,22 @@ void ScoreService::applyJudgement(PlayStats &stats, const Judgement judgement) {
     switch (judgement) {
     case Judgement::Perfect:
         ++stats.perfect;
-        ++stats.combo;
-        stats.earnedUnits += weight(judgement);
         break;
     case Judgement::Great:
         ++stats.great;
-        ++stats.combo;
-        stats.earnedUnits += weight(judgement);
         break;
     case Judgement::Good:
         ++stats.good;
-        ++stats.combo;
-        stats.earnedUnits += weight(judgement);
         break;
     case Judgement::Miss:
         ++stats.miss;
         stats.combo = 0;
         break;
+    }
+    const int units = weight(judgement);
+    if (units > 0) {
+        ++stats.combo;
+        stats.earnedUnits += units;
     }
     ++stats.finalizedCount;
     stats.maxCombo = std::max(stats.maxCombo, stats.combo);

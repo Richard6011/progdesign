@@ -34,7 +34,7 @@ public:
             return 1;
         }
 
-        MainWindow window(nullptr, userData.path());
+        MainWindow window(nullptr, userData.path(), QStringLiteral("冒烟测试"));
         int failures = 0;
         const auto check = [&](bool condition, const char *message) {
             if (!condition) {
@@ -97,7 +97,9 @@ public:
                    "song index populates the song selector")) return 1;
 
         window.settings_.musicVolume = 0;
-        window.nickname_->setText("冒烟测试");
+        check(window.nickname_->isReadOnly() && window.settingsName_->isReadOnly() &&
+                  window.settings_.playerName == "冒烟测试",
+              "logged-in account is the read-only player identity");
         window.showPreparation();
         const int twinkleIndex = window.songBox_->findData("twinkle-star");
         if (!check(twinkleIndex >= 0, "Twinkle Star is available in the real song selector")) return 1;
