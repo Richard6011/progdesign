@@ -11,8 +11,6 @@ typedef enum {
     PAGE_GAME,
     PAGE_RESULT,
     PAGE_RANK,
-    PAGE_SETTINGS,
-    PAGE_HELP,
     PAGE_QUIT
 } Page;
 typedef enum {
@@ -27,8 +25,6 @@ typedef enum {
     ACT_SOLO,
     ACT_LAN,
     ACT_RANK,
-    ACT_SETTINGS,
-    ACT_HELP,
     ACT_QUIT,
     ACT_HOME,
     ACT_SONG_PREV,
@@ -45,10 +41,6 @@ typedef enum {
     ACT_ABORT,
     ACT_SAVE,
     ACT_REMATCH,
-    ACT_VOLUME,
-    ACT_OFFSET,
-    ACT_SETTINGS_SAVE,
-    ACT_RANK_MODE,
     ACT_LOGOUT,
     ACT_RANK_PREV,
     ACT_RANK_NEXT
@@ -66,7 +58,7 @@ typedef struct {
     Chart chart;
     Engine engine;
     Page page;
-    int song, diff, rank_mode, rank_page, focus;
+    int song, diff, rank_page, focus;
     bool registering, lan_mode, saved, submitted, started;
     bool media_ready, countdown, settings_writable, run_active;
     int loaded_revision;
@@ -80,7 +72,7 @@ typedef struct {
 } App;
 /**
  * @brief 按当前页面生成一帧界面与新的按钮命中表。
- * 返回：无返回值；清零并重建按钮表，最后刷新 EasyX 批量绘制。
+ * 返回：无返回值；清零并重建按钮表，最后提交 Qt 离屏画布。
  * 详见：ui.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 void ui_render(App *a);

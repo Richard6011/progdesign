@@ -244,7 +244,7 @@ static Record record_make(const Chart *c, const char *name) {
  * 参数：l 为可用曲库，测试使用其中小星星 Easy。
  * 返回：无返回值，CHECK 失败结束进程。
  * 说明：在测试程序旁创建唯一 test-data
- * 子目录，覆盖中文账号、密码空格、重复注册、设置往返、幂等成绩及分榜；主动损坏测试文件后验证拒绝覆盖，不触碰用户
+ * 子目录，覆盖中文账号、密码空格、重复注册、设置往返、幂等成绩、账号最佳成绩及模式隔离；主动损坏测试文件后验证拒绝覆盖，不触碰用户
  * AppData 数据。
  */
 static void storage_tests(const Library *l) {
@@ -268,17 +268,40 @@ static void storage_tests(const Library *l) {
     Store store = {0};
     CHECK(store_load(&store, root, error));
     Record one = record_make(&c, "测试玩家");
+    /* 先存较低成绩，再存满分，验证榜单选择最高分而不是最早的一局。 */
+    memset(&one.stats, 0, sizeof(one.stats));
+    for (int i = 0; i < c.count; i++)
+        stats_apply(&one.stats, GREAT);
     CHECK(store_save(&store, &one, error));
     CHECK(store_save(&store, &one, error));
     CHECK(store.count == 1);
     Record two = record_make(&c, "另一个玩家");
     CHECK(store_save(&store, &two, error));
+    Record best = record_make(&c, "测试玩家");
+    nc_copy(best.date, sizeof(best.date), "2026-11-17T00:00:00Z");
+    CHECK(store_save(&store, &best, error));
+    Record tied = record_make(&c, "测试玩家");
+    nc_copy(tied.date, sizeof(tied.date), "2026-11-15T00:00:00Z");
+    CHECK(store_save(&store, &tied, error));
+    /* 联机更早的同分记录仍须隔离，不能替换单人榜中该账号的最佳成绩。 */
+    Record lan = record_make(&c, "测试玩家");
+    lan.mode = 1;
+    nc_uuid(lan.match);
+    nc_copy(lan.opponent, sizeof(lan.opponent), "另一个玩家");
+    nc_copy(lan.date, sizeof(lan.date), "2026-11-14T00:00:00Z");
+    CHECK(store_save(&store, &lan, error));
     const Record *rows[8];
     CHECK(store_ranking(&store, &c, 0, rows, 8) == 2);
-    CHECK(store_ranking(&store, &c, 1, rows, 8) == 0);
+    CHECK(!strcmp(rows[0]->session, tied.session));
+    CHECK(!strcmp(rows[1]->session, two.session));
+    CHECK(store_ranking(&store, &c, 0, rows, 1) == 1);
+    CHECK(!strcmp(rows[0]->session, tied.session));
+    CHECK(store_ranking(&store, &c, 1, rows, 8) == 1);
+    CHECK(!strcmp(rows[0]->session, lan.session));
+    CHECK(store.count == 5);
     store_free(&store);
     CHECK(store_load(&store, root, error));
-    CHECK(store.count == 2);
+    CHECK(store.count == 5);
     two.stats.miss++;
     CHECK(!store_save(&store, &two, error));
     snprintf(path, sizeof(path), "%s/records.json", root);

@@ -1,6 +1,6 @@
 #ifndef NC_H
 #define NC_H
-/* Application modules are C17. Only easyx_bridge.cpp adapts the C++ graphics API. */
+/* 业务模块使用 C17；只有 qt_bridge.cpp 通过薄 C++ 接口提供 Qt 窗口和绘图。 */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -265,7 +265,7 @@ void store_free(Store *store);
  */
 bool store_save(Store *store, const Record *record, char *error);
 /**
- * @brief 查询某模式下与当前谱面完全匹配的排行榜。
+ * @brief 查询某模式下与当前谱面完全匹配的账号最佳成绩榜。
  * 返回：返回写入 out 的数量，最大 cap；无记录或临时分配失败均返回 0。
  * 详见：storage.c 的同名函数定义（含参数、步骤及边界说明）。
  */

@@ -310,13 +310,27 @@ static int rank_compare(const void *a, const void *b) {
     return sx == sy ? strcmp(x->date, y->date) : sy - sx;
 }
 /**
- * @brief 查询某模式下与当前谱面完全匹配的排行榜。
+ * @brief 将同一账号的记录排在一起，并让其最高分位于最前。
+ * 参数：a/b 指向 Record 指针；比较过程不修改原始成绩。
+ * 返回：先按账号排序，同账号复用分数和日期规则。
+ * 说明：先分组再去重可避免逐条扫描账号的平方复杂度，最多 20000 条记录时仍能快速查询。
+ */
+static int account_rank_compare(const void *a, const void *b) {
+    const Record *x = *(const Record *const *)a, *y = *(const Record *const *)b;
+    int name = strcmp(x->name, y->name);
+    return name ? name : rank_compare(a, b);
+}
+/**
+ * @brief 查询某模式下与当前谱面完全匹配的账号最佳成绩榜。
  * 参数：s 为仓库；c 为有效谱面；mode 为 0 单人/1 联机；out 至少 cap 个指针；cap 必须非负。
  * 返回：返回写入 out 的数量，最大 cap；无记录或临时分配失败均返回 0。
- * 说明：按模式、规则、谱面版本、ID、哈希、难度过滤并排序。输出指针借用仓库内存，不得释放；store_free、store_
+ * 说明：按模式、规则、谱面版本、ID、哈希、难度过滤；每账号仅保留最高分，同分取较早日期。原始记录全部保留。
+ * 输出指针借用仓库内存，不得释放；store_free、store_
  * load 或会 realloc 的 store_save 后不能继续使用。
  */
 int store_ranking(const Store *s, const Chart *c, int mode, const Record **out, int cap) {
+    if (!out || cap <= 0)
+        return 0;
     const Record **all = malloc((size_t)(s->count + 1) * sizeof(*all));
     if (!all)
         return 0;
@@ -328,6 +342,14 @@ int store_ranking(const Store *s, const Chart *c, int mode, const Record **out, 
             !strcmp(r->difficulty, c->difficulty))
             all[n++] = r;
     }
+    qsort(all, (size_t)n, sizeof(*all), account_rank_compare);
+    int unique = 0;
+    for (int i = 0; i < n; i++) {
+        /* 同账号已按成绩排序，只取组首；先去重再截断，避免重复账号占满榜单容量。 */
+        if (!unique || strcmp(all[i]->name, all[unique - 1]->name))
+            all[unique++] = all[i];
+    }
+    n = unique;
     qsort(all, (size_t)n, sizeof(*all), rank_compare);
     if (n > cap)
         n = cap;

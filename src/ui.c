@@ -3,15 +3,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-static const uint32_t BG = 0x0b1020, PANEL = 0x131f35, CARD = 0x203351, TEXT = 0xf0f4ff,
-                      MUTED = 0x9baccc, BLUE = 0x5879f0, CYAN = 0x58dcd6, PINK = 0xf384b5,
-                      GREEN = 0x80dfad, RED = 0xff8190;
-static const uint32_t lanes[4] = {0x62cbe7, 0x8b9eff, 0xc193f7, 0xf28cb5};
+/* 浅灰背景、白色内容和深色文字沿用常见桌面界面配色；蓝色仅用于选中状态。
+ * 音符仍用四种低饱和颜色区分轨道，避免换肤影响演奏识别。 */
+static const uint32_t BG = 0xf0f0f0, PANEL = 0xffffff, CARD = 0xe6e6e6, TEXT = 0x202020,
+                      MUTED = 0x666666, BORDER = 0xb8b8b8, BLUE = 0xdce9f7,
+                      CYAN = 0x245a81, PINK = 0x73576d, GREEN = 0x356443, RED = 0xb03030;
+static const uint32_t lanes[4] = {0x6899b4, 0x7e8fb6, 0x9985ad, 0xb18698};
 /**
  * @brief 在界面上绘制一段 UTF-8 文本。
  * 参数：x/y 为窗口客户区坐标；size 为字体高度；c 为 0xRRGGBB；s 为零结尾文本。
  * 返回：无返回值。
- * 说明：只转发 gfx_text，不登记点击区域，不修改业务数据；文本使用统一的 EasyX/Windows 字体转换路径。
+ * 说明：只转发 gfx_text，不登记点击区域，不修改业务数据；文本使用统一的 Qt UTF-8 字体绘制路径。
  */
 static void label(int x, int y, int size, uint32_t c, const char *s) { gfx_text(x, y, size, c, s); }
 /**
@@ -33,11 +35,12 @@ static bool hover(const App *a, int x, int y, int w, int h) {
  */
 static void button(App *a, int x, int y, int w, int h, const char *s, Action act, int val,
                    bool enabled, bool primary) {
-    uint32_t c = enabled ? (primary ? BLUE : CARD) : 0x1a263a;
+    uint32_t c = enabled ? (primary ? BLUE : CARD) : 0xededed;
     if (enabled && hover(a, x, y, w, h))
-        c = primary ? 0x6e8bff : 0x314c73;
-    gfx_rect(x, y, w, h, c, 12);
-    label(x + 18, y + (h - 22) / 2, 20, enabled ? TEXT : 0x68768d, s);
+        c = primary ? 0xcbdff3 : 0xd9d9d9;
+    gfx_rect(x, y, w, h, enabled && primary ? 0x7c9bb9 : BORDER, 4);
+    gfx_rect(x + 1, y + 1, w - 2, h - 2, c, 2);
+    gfx_text_center(x, y, w, h, 20, enabled ? TEXT : 0x888888, s);
     if (enabled && a->button_count < 96)
         a->buttons[a->button_count++] = (Button){x, y, w, h, act, val};
 }
@@ -60,8 +63,8 @@ static void btn(App *a, int x, int y, int w, const char *s, Action act) {
  */
 static void field(App *a, int x, int y, int w, const char *value, const char *hint, Action act,
                   int focus, bool secret) {
-    gfx_rect(x, y, w, 54, a->focus == focus ? 0x354d7b : CARD, 10);
-    gfx_rect(x + 2, y + 2, w - 4, 50, PANEL, 8);
+    gfx_rect(x, y, w, 54, a->focus == focus ? CYAN : BORDER, 2);
+    gfx_rect(x + 1, y + 1, w - 2, 52, PANEL, 0);
     char display[256];
     nc_copy(display, sizeof(display), value);
     if (secret) {
@@ -82,17 +85,16 @@ static void field(App *a, int x, int y, int w, const char *value, const char *hi
 }
 /**
  * @brief 绘制普通页面的统一页头。
- * 参数：a 提供当前 page；s/sub 为标题及副标题。
+ * 参数：a 提供当前 page；s 为标题。
  * 返回：无返回值；清空背景、绘制分隔线，并按页面登记返回主页按钮。
  * 说明：登录、主页和游戏页不显示该返回按钮；普通页面先调用 heading 再绘制正文，避免后续背景清除已画内容。
  */
-static void heading(App *a, const char *s, const char *sub) {
+static void heading(App *a, const char *s) {
     gfx_clear(BG);
     label(48, 30, 32, TEXT, s);
-    label(50, 77, 17, MUTED, sub);
     if (a->page != PAGE_LOGIN && a->page != PAGE_HOME && a->page != PAGE_GAME)
         btn(a, 1064, 36, 168, "返回主页", ACT_HOME);
-    gfx_line(48, 116, 1232, 116, 0x2a3c59);
+    gfx_line(48, 104, 1232, 104, BORDER);
 }
 /**
  * @brief 在底部有限空间内绘制应用提示。
@@ -102,8 +104,9 @@ static void heading(App *a, const char *s, const char *sub) {
  * 换行器，供当前项目中文短提示使用。
  */
 static void footer(App *a) {
-    gfx_line(48, 740, 1232, 740, 0x26354d);
-    /* Status is wrapped on UTF-8 boundaries, keeping errors inside the window. */
+    if (!a->message[0])
+        return;
+    /* 仅有实际状态或错误时才占用底部；按 UTF-8 边界折行，避免中文截断。 */
     char line[512];
     size_t pos = 0, len = strlen(a->message);
     int row = 0;
@@ -136,136 +139,113 @@ static void footer(App *a) {
  * account_action，避免把文件访问放在每帧绘制中。
  */
 static void login(App *a) {
-    heading(a, "音符碰撞", "NOTE COLLISION  /  四轨节奏游戏");
-    gfx_rect(70, 164, 535, 510, PANEL, 18);
-    label(112, 200, 29, TEXT, a->registering ? "创建本地账号" : "欢迎回来");
-    label(112, 254, 17, MUTED, "账号 · 1—16 个字符");
-    field(a, 112, 284, 450, a->name, "输入账号", ACT_FIELD_NAME, 1, false);
-    label(112, 365, 17, MUTED, "密码 · 1—64 个字符");
-    field(a, 112, 395, 450, a->password, "输入密码", ACT_FIELD_PASSWORD, 2, true);
-    button(a, 112, 486, 450, 58, a->registering ? "注 册" : "登 录",
+    heading(a, "音符碰撞");
+    gfx_rect(376, 150, 528, 542, PANEL, 4);
+    gfx_text_center(416, 174, 448, 42, 28, TEXT, a->registering ? "注册" : "登录");
+    label(416, 242, 18, TEXT, "账号");
+    field(a, 416, 274, 448, a->name, "账号", ACT_FIELD_NAME, 1, false);
+    label(416, 354, 18, TEXT, "密码");
+    field(a, 416, 386, 448, a->password, "密码", ACT_FIELD_PASSWORD, 2, true);
+    button(a, 416, 474, 448, 54, a->registering ? "注册" : "登录",
            a->registering ? ACT_REGISTER : ACT_LOGIN, 0, true, true);
-    btn(a, 112, 570, 450, a->registering ? "已有账号，返回登录" : "没有账号，注册一个",
-        ACT_LOGIN_MODE);
-    label(700, 226, 42, TEXT, "跟随节拍");
-    label(700, 284, 42, CYAN, "让音符碰撞");
-    const char *keys[] = {"D", "F", "J", "K"};
-    for (int i = 0; i < 4; i++) {
-        gfx_rect(700 + i * 117, 395, 96, 96, lanes[i], 14);
-        label(732 + i * 117, 422, 37, BG, keys[i]);
-    }
-    label(700, 542, 18, MUTED, "单点 / 长按 / 连锁 / 同时按键");
-    label(700, 578, 18, MUTED, "单人挑战 / 局域网双人 / 本地排行榜");
-    btn(a, 1042, 654, 168, "退出", ACT_QUIT);
+    btn(a, 416, 548, 448, a->registering ? "返回登录" : "注册账号", ACT_LOGIN_MODE);
+    btn(a, 416, 622, 448, "退出", ACT_QUIT);
 }
 /**
  * @brief 绘制登录后的主菜单。
  * 参数：a 提供已登录昵称和当前鼠标状态。
- * 返回：无返回值；登记单人、联机、排行、设置、帮助、换账号与退出动作。
- * 说明：显示当前账号和操作引导；不预加载媒体、不改变模式，具体页面切换在动作处理阶段进行。
+ * 返回：无返回值；登记单人、联机、排行、换账号与退出动作。
+ * 说明：显示当前账号和居中菜单；不预加载媒体、不改变模式，具体页面切换在动作处理阶段进行。
  */
 static void home(App *a) {
-    heading(a, "音符碰撞", "FOUR LANES. ONE RHYTHM.");
-    gfx_rect(48, 151, 1184, 174, PANEL, 18);
-    label(82, 181, 19, MUTED, "当前玩家");
-    label(82, 218, 35, TEXT, a->name);
-    label(650, 198, 24, CYAN, "D / F / J / K");
-    label(650, 244, 18, MUTED, "选择小星星 Easy，开启第一场演奏");
-    button(a, 48, 365, 568, 92, "01    开始单人演奏", ACT_SOLO, 0, true, true);
-    button(a, 644, 365, 588, 92, "02    局域网双人", ACT_LAN, 0, true, false);
-    button(a, 48, 485, 360, 76, "排行榜", ACT_RANK, 0, true, false);
-    button(a, 435, 485, 360, 76, "设置", ACT_SETTINGS, 0, true, false);
-    button(a, 822, 485, 410, 76, "操作与规则", ACT_HELP, 0, true, false);
-    btn(a, 48, 632, 220, "切换账号", ACT_LOGOUT);
-    btn(a, 1012, 632, 220, "退出程序", ACT_QUIT);
+    gfx_clear(BG);
+    gfx_text_center(0, 94, 1280, 58, 36, TEXT, "音符碰撞");
+    gfx_text_center(0, 170, 1280, 32, 20, MUTED, a->name);
+    /* 统一宽度和间距，并从窗口中线定位；五个入口均处于同一竖列。 */
+    const int x = (1280 - 360) / 2, w = 360, h = 54, gap = 20;
+    const char *names[] = {"单人模式", "局域网双人", "排行榜", "切换账号", "退出"};
+    const Action actions[] = {ACT_SOLO, ACT_LAN, ACT_RANK, ACT_LOGOUT, ACT_QUIT};
+    for (int i = 0; i < 5; i++)
+        button(a, x, 248 + i * (h + gap), w, h, names[i], actions[i], 0, true, i == 0);
 }
 /**
  * @brief 绘制可复用的曲目卡片与三档难度选择器。
- * 参数：a 的 song/diff/chart 已合法；y 为卡片上边界；editable 控制是否可切换。
+ * 参数：a 的 song/diff/chart 已合法；x/y 为卡片左上角；editable 控制是否可切换。
  * 返回：无返回值；按 editable 登记前后歌曲与难度按钮。
- * 说明：展示歌曲名、作者、判定数、时长与 approach；不读取谱面文件。单人和联机房主复用，客人可见配置但不能操作。
+ * 说明：只展示歌曲名和难度；不读取谱面文件。单人和联机房主复用，客人可见配置但不能操作。
  */
-static void selection(App *a, int y, bool editable) {
+static void selection(App *a, int x, int y, bool editable) {
     Song *s = &a->lib.songs[a->song];
-    char line[256];
-    gfx_rect(48, y, 716, 170, PANEL, 14);
-    label(80, y + 20, 18, MUTED, "曲目");
-    label(80, y + 54, 32, TEXT, s->title);
-    label(80, y + 108, 17, MUTED, s->artist);
-    button(a, 570, y + 42, 72, 48, "<", ACT_SONG_PREV, 0, editable, false);
-    button(a, 660, y + 42, 72, 48, ">", ACT_SONG_NEXT, 0, editable, false);
+    gfx_rect(x, y, 716, 170, PANEL, 4);
+    label(x + 32, y + 54, 32, TEXT, s->title);
+    button(a, x + 522, y + 42, 72, 48, "<", ACT_SONG_PREV, 0, editable, false);
+    button(a, x + 612, y + 42, 72, 48, ">", ACT_SONG_NEXT, 0, editable, false);
     for (int d = 0; d < 3; d++)
-        button(a, 48 + d * 244, y + 192, 228, 52, nc_difficulties[d], ACT_DIFF, d, editable,
+        button(a, x + d * 244, y + 192, 228, 52, nc_difficulties[d], ACT_DIFF, d, editable,
                d == a->diff);
-    snprintf(line, sizeof(line), "%d 个判定单元   /   %.1f 秒   /   接近时间 %d ms", a->chart.count,
-             a->chart.duration / 1000.0, a->chart.approach);
-    label(50, y + 267, 18, MUTED, line);
 }
 /**
  * @brief 绘制单人准备演奏页。
  * 参数：a 含当前选曲和已载入谱面。
- * 返回：无返回值；绘制玩法提示，并在 chart.count>0 时启用开始按钮。
+ * 返回：无返回值；仅在 chart.count>0 时启用开始按钮。
  * 说明：调用 selection 绘制公共选曲区；仅发 ACT_PLAY，真正重载音频和倒计时由 solo_start 完成。
  */
 static void select_page(App *a) {
-    heading(a, "准备演奏", "选择曲目与难度，按 D / F / J / K 完成挑战");
-    selection(a, 163, true);
-    gfx_rect(806, 163, 426, 362, PANEL, 14);
-    label(840, 197, 25, CYAN, "演奏提示");
-    label(840, 254, 19, TEXT, "蓝色音符：按下一次");
-    label(840, 299, 19, TEXT, "长条音符：保持至尾部");
-    label(840, 344, 19, TEXT, "黄色节点：连续击打");
-    label(840, 389, 19, TEXT, "多轨同时到达：同时按键");
-    label(840, 461, 17, MUTED, "先选小星星 Easy 更容易上手");
-    button(a, 48, 570, 716, 64, "开始演奏", ACT_PLAY, 0, a->chart.count > 0, true);
+    heading(a, "选曲");
+    selection(a, 282, 180, true);
+    button(a, 282, 492, 716, 58, "开始", ACT_PLAY, 0, a->chart.count > 0, true);
 }
 /**
  * @brief 根据连接阶段绘制大厅及可用操作。
  * 参数：a 含 lan_mode、Network、当前曲目和本机地址。
  * 返回：无返回值；登记创建/加入、准备、房主开始及可编辑选曲动作。
- * 说明：空闲/连接/监听时显示 IPv4/端口；已入房显示角色、资源校验、采样数和准备状态。按钮启用是 UI
+ * 说明：空闲/连接/监听时显示 IPv4/端口；已入房显示角色、资源校验和准备状态。按钮启用是 UI
  * 引导，网络模块还会独立检查协议状态，绘制本身不操作 socket。
  */
 static void lobby(App *a) {
     bool connected = a->net.state == NET_ROOM && a->net.handshake,
          free_room = a->net.state == NET_IDLE || a->net.state == NET_ABORT;
-    heading(a, "局域网双人", "双方使用相同版本与资源；房主选择歌曲，双方准备后由房主开始");
+    heading(a, "局域网双人");
     if (free_room || a->net.state == NET_CONNECT || a->net.state == NET_LISTEN) {
-        gfx_rect(48, 153, 716, 456, PANEL, 14);
-        label(80, 184, 25, TEXT, "创建或加入房间");
-        label(80, 238, 17, MUTED, "房主 IPv4");
-        field(a, 80, 270, 390, a->ip, "例如 192.168.1.8", ACT_FIELD_IP, 3, false);
-        label(495, 238, 17, MUTED, "端口");
-        field(a, 495, 270, 232, a->port, "9527", ACT_FIELD_PORT, 4, false);
-        button(a, 80, 356, 300, 58, "创建房间", ACT_HOST, 0, free_room, true);
-        button(a, 406, 356, 321, 58, "加入房间", ACT_JOIN, 0, free_room, false);
-        label(80, 450, 17, MUTED, "本机 IPv4：");
-        label(80, 488, 18, CYAN, a->addresses);
-        label(80, 552, 17, MUTED, a->net.status);
+        gfx_rect(160, 163, 960, 440, PANEL, 4);
+        label(200, 200, 18, TEXT, "房主 IPv4");
+        field(a, 200, 234, 550, a->ip, "IPv4", ACT_FIELD_IP, 3, false);
+        label(782, 200, 18, TEXT, "端口");
+        field(a, 782, 234, 298, a->port, "9527", ACT_FIELD_PORT, 4, false);
+        button(a, 200, 326, 420, 54, "创建房间", ACT_HOST, 0, free_room, true);
+        button(a, 660, 326, 420, 54, "加入房间", ACT_JOIN, 0, free_room, false);
+        label(200, 424, 18, MUTED, "本机 IPv4");
+        /* 多网卡地址分两行显示，保留连接所需信息，避免长串超出卡片。 */
+        char addresses[sizeof(a->addresses)];
+        nc_copy(addresses, sizeof(addresses), a->addresses);
+        char *split = addresses;
+        int separators = 0;
+        while (*split && separators < 3)
+            if (*split++ == '/')
+                separators++;
+        if (separators == 3) {
+            split[-1] = 0;
+            label(200, 462, 17, TEXT, addresses);
+            label(200, 494, 17, TEXT, split);
+        } else
+            label(200, 462, 17, TEXT, addresses);
+        label(200, 550, 17, MUTED, a->net.status);
     } else {
-        selection(a, 153, connected && a->net.host);
+        selection(a, 48, 153, connected && a->net.host);
         char line[256];
-        snprintf(line, sizeof(line), "房间身份：%s   另一位玩家：%s", a->net.host ? "房主" : "客人",
-                 a->net.peer);
-        label(50, 470, 20, CYAN, line);
-        snprintf(line, sizeof(line), "资源校验：%s     时钟采样：%d     RTT：%lld ms",
-                 a->net.peer_verified ? "一致" : "等待", a->net.samples, (long long)a->net.rtt);
-        label(50, 512, 18, MUTED, line);
-        button(a, 48, 568, 340, 58, a->net.ready ? "取消准备" : "准 备", ACT_READY, 0,
+        gfx_rect(806, 153, 426, 382, PANEL, 4);
+        snprintf(line, sizeof(line), "%s：%s", a->net.host ? "房主" : "客人", a->name);
+        label(838, 192, 20, TEXT, line);
+        snprintf(line, sizeof(line), "对方：%s", a->net.peer);
+        label(838, 242, 20, TEXT, line);
+        label(838, 302, 18, MUTED, a->net.peer_verified ? "资源一致" : "校验中");
+        label(838, 344, 18, MUTED, a->net.peer_ready ? "对方已准备" : "对方未准备");
+        button(a, 48, 468, 340, 58, a->net.ready ? "取消准备" : "准备", ACT_READY, 0,
                connected && a->net.peer_verified, true);
-        button(a, 414, 568, 350, 58, a->net.peer_ready ? "对方已准备" : "等待对方准备", ACT_NONE, 0,
-               false, false);
+        button(a, 838, 438, 362, 58, "开始", ACT_NET_START, 0,
+               connected && a->net.host && a->net.ready && a->net.peer_ready && a->net.samples >= 3,
+               true);
     }
-    gfx_rect(806, 153, 426, 470, PANEL, 14);
-    label(840, 189, 25, TEXT, "同一局域网 · 2 位玩家");
-    label(840, 251, 18, MUTED, "1  房主创建房间，告知 IPv4");
-    label(840, 298, 18, MUTED, "2  客人输入地址和端口加入");
-    label(840, 345, 18, MUTED, "3  校验相同资源并分别准备");
-    label(840, 392, 18, MUTED, "4  房主开始，按共同时间起播");
-    label(840, 454, 17, MUTED, "联机模式禁用暂停；断线局不保存");
-    button(a, 840, 534, 356, 58, "房主开始对战", ACT_NET_START, 0,
-           connected && a->net.host && a->net.ready && a->net.peer_ready && a->net.samples >= 3,
-           true);
 }
 /**
  * @brief 按音乐绝对时间绘制四轨、音符、分数和暂停层。
@@ -276,7 +256,7 @@ static void lobby(App *a) {
  * 完成，不依据像素碰撞计分。
  */
 static void game(App *a) {
-    gfx_clear(0x080f1d);
+    gfx_clear(BG);
     const int left = 350, width = 580, top = 128, bottom = 635;
     char s[256];
     Result r = stats_result(&a->engine.stats, a->chart.count);
@@ -284,17 +264,17 @@ static void game(App *a) {
     label(44, 74, 17, MUTED, a->chart.difficulty);
     snprintf(s, sizeof(s), "%07d", r.score);
     label(44, 164, 35, CYAN, s);
-    label(44, 214, 17, MUTED, "SCORE");
+    label(44, 214, 17, MUTED, "分数");
     snprintf(s, sizeof(s), "%d", a->engine.stats.combo);
     label(44, 286, 50, TEXT, s);
-    label(44, 346, 18, MUTED, "COMBO");
+    label(44, 346, 18, MUTED, "连击");
     snprintf(s, sizeof(s), "%.2f%%", r.accuracy * 100);
     label(44, 409, 28, GREEN, s);
-    label(44, 451, 17, MUTED, "ACCURACY");
-    gfx_rect(left - 3, top - 3, width + 6, bottom - top + 60, 0x2b3b5b, 4);
+    label(44, 451, 17, MUTED, "准确率");
+    gfx_rect(left - 3, top - 3, width + 6, bottom - top + 60, BORDER, 4);
     for (int l = 0; l < 4; l++) {
         int x = left + l * width / 4;
-        gfx_rect(x, top, width / 4 - 2, bottom - top + 55, a->engine.down[l] ? 0x293e60 : 0x111d31,
+        gfx_rect(x, top, width / 4 - 2, bottom - top + 55, a->engine.down[l] ? 0xdce9f7 : PANEL,
                  0);
         gfx_rect(x + 12, bottom + 15, width / 4 - 26, 37, a->engine.down[l] ? lanes[l] : CARD, 7);
         label(x + 60, bottom + 20, 23, a->engine.down[l] ? BG : TEXT,
@@ -318,13 +298,13 @@ static void game(App *a) {
             if (head > bottom)
                 head = bottom;
             if (head >= top && head >= tail)
-                gfx_rect(x + 22, tail, w - 44, head - tail, 0x376477, 6);
+                gfx_rect(x + 22, tail, w - 44, head - tail, 0xa9c3ce, 6);
             if (y >= top && y <= bottom + 20)
                 gfx_rect(x, y - 7, w, 15, CYAN, 5);
         } else {
             if (y < top || y > bottom + 20)
                 continue;
-            gfx_rect(x, y - 7, w, 15, n->type == CHAIN ? 0xffd782 : lanes[n->lane], 6);
+            gfx_rect(x, y - 7, w, 15, n->type == CHAIN ? 0xb39a5a : lanes[n->lane], 6);
             if (n->chord >= 0)
                 gfx_rect(x + w / 2 - 12, y - 3, 24, 5, TEXT, 2);
         }
@@ -357,14 +337,12 @@ static void game(App *a) {
         int seconds = (int)((a->target - nc_now() + 999) / 1000);
         snprintf(s, sizeof(s), "%d", seconds > 0 ? seconds : 1);
         label(612, 293, 58, CYAN, s);
-        label(504, 369, 20, TEXT, "手指放在 D F J K 上");
     }
     if (a->engine.state == PAUSED || a->engine.state == RESUME_READY) {
         gfx_rect(418, 264, 446, 242, PANEL, 14);
-        label(532, 288, 31, TEXT, "已 暂 停");
-        label(451, 343, 17, MUTED, "活动长按需要重新按住对应轨道");
+        label(532, 288, 31, TEXT, "已暂停");
         button(a, 450, 393, 382, 56,
-               a->engine.state == RESUME_READY ? "等待长按恢复 · Enter" : "继续演奏 · Enter",
+               a->engine.state == RESUME_READY ? "按住长按键继续" : "继续 · Enter",
                ACT_RESUME, 0, true, true);
     }
 }
@@ -376,7 +354,7 @@ static void game(App *a) {
  * 才显示正式胜负和开放保存，同分为平局，客人等待房主再来一局。不在每帧绘制中再次保存。
  */
 static void result(App *a) {
-    heading(a, "演奏结果", a->lan_mode ? "双方确认最终成绩后，才能保存联机记录" : "完整演奏已结束");
+    heading(a, "成绩");
     Result r = stats_result(&a->engine.stats, a->chart.count);
     char s[256];
     gfx_rect(48, 153, 716, 248, PANEL, 14);
@@ -411,48 +389,44 @@ static void result(App *a) {
               a->net.confirmed ? (r.score == peer  ? "平 局"
                                   : r.score > peer ? "胜 利"
                                                    : "落 败")
-                               : "等待结果确认");
+                               : "确认中");
         snprintf(s, sizeof(s), "对方 %s / %d 分", a->net.peer, peer);
         label(840, 382, 19, TEXT, s);
-    } else
-        label(840, 348, 20, CYAN, "规则版本 2");
-    label(840, 454, 19, a->saved ? GREEN : MUTED, a->saved ? "成绩已保存" : "成绩尚未保存");
+    }
+    label(840, 454, 19, a->saved ? GREEN : MUTED, a->saved ? "已保存" : "未保存");
     button(a, 48, 585, 340, 58,
-           a->lan_mode ? (a->net.host ? "返回房间 / 再来一局" : "等待房主再来一局") : "重新演奏",
+           a->lan_mode ? (a->net.host ? "返回房间" : "等待房主") : "重新演奏",
            a->lan_mode ? ACT_REMATCH : ACT_RESTART, 0,
            !a->lan_mode || (a->net.confirmed && a->net.host), true);
     button(a, 414, 585, 350, 58, "重试保存", ACT_SAVE, 0,
            !a->saved && (!a->lan_mode || a->net.confirmed), false);
 }
 /**
- * @brief 绘制经过完整分榜与并列排名处理的成绩列表。
- * 参数：a 提供 Store、选曲、diff、rank_mode 和 rank_page。
+ * @brief 绘制单人模式下各账号最佳成绩。
+ * 参数：a 提供 Store、选曲、diff 和 rank_page。
  * 返回：无返回值；每页显示八条，可修正越界页号并登记翻页/筛选按钮。
  * 说明：借用 store_ranking
  * 返回的记录指针，高分在前，同分沿用相同名次。临时指针数组当帧释放，记录本身不释放；无记录或数组分配失败显示空榜。
  */
 static void ranking(App *a) {
-    heading(a, "排行榜", "模式、谱面哈希、难度、规则分别分榜；同分并列");
+    heading(a, "排行榜");
     char s[256];
-    snprintf(s, sizeof(s), "%s  /  %s", a->lib.songs[a->song].title, nc_difficulties[a->diff]);
-    label(48, 149, 25, TEXT, s);
+    label(48, 150, 25, TEXT, a->lib.songs[a->song].title);
     btn(a, 670, 145, 70, "<", ACT_SONG_PREV);
     btn(a, 754, 145, 70, ">", ACT_SONG_NEXT);
     for (int d = 0; d < 3; d++)
         button(a, 48 + d * 150, 211, 138, 45, nc_difficulties[d], ACT_DIFF, d, true, d == a->diff);
-    button(a, 860, 211, 170, 45, "单人", ACT_RANK_MODE, 0, true, a->rank_mode == 0);
-    button(a, 1050, 211, 182, 45, "局域网", ACT_RANK_MODE, 1, true, a->rank_mode == 1);
+    /* 排行入口固定查询单人模式（0）；存储层按账号保留最佳成绩，避免同账号占据多行。 */
     const Record **rows = malloc(20000 * sizeof(*rows));
-    int n = rows ? store_ranking(&a->store, &a->chart, a->rank_mode, rows, 20000) : 0;
+    int n = rows ? store_ranking(&a->store, &a->chart, 0, rows, 20000) : 0;
     if (a->rank_page * 8 >= n)
         a->rank_page = n ? (n - 1) / 8 : 0;
-    gfx_rect(48, 279, 1184, 40, CARD, 6);
-    label(65, 288, 17, TEXT, "排名");
-    label(175, 288, 17, TEXT, "玩家");
-    label(490, 288, 17, TEXT, "分数");
-    label(680, 288, 17, TEXT, "准确率");
-    label(878, 288, 17, TEXT, "评级");
-    label(994, 288, 17, TEXT, "完成日期 UTC");
+    gfx_rect(48, 279, 1184, 40, CARD, 2);
+    label(70, 288, 17, TEXT, "排名");
+    label(200, 288, 17, TEXT, "账号");
+    label(570, 288, 17, TEXT, "分数");
+    label(820, 288, 17, TEXT, "准确率");
+    label(1100, 288, 17, TEXT, "评级");
     int rank = 0, previous = -1;
     for (int i = 0; i < n; i++) {
         Result r = stats_result(&rows[i]->stats, rows[i]->count);
@@ -461,79 +435,28 @@ static void ranking(App *a) {
         previous = r.score;
         if (i < a->rank_page * 8 || i >= a->rank_page * 8 + 8)
             continue;
-        int y = 332 + (i - a->rank_page * 8) * 40;
+        int y = 340 + (i - a->rank_page * 8) * 40;
         snprintf(s, sizeof(s), "%d", rank);
-        label(65, y, 19, CYAN, s);
-        label(175, y, 19, TEXT, rows[i]->name);
-        snprintf(s, sizeof(s), "%07d", r.score);
-        label(490, y, 19, TEXT, s);
+        label(70, y, 19, TEXT, s);
+        label(200, y, 19, TEXT, rows[i]->name);
+        snprintf(s, sizeof(s), "%d", r.score);
+        label(570, y, 19, TEXT, s);
         snprintf(s, sizeof(s), "%.2f%%", r.accuracy * 100);
-        label(680, y, 19, TEXT, s);
+        label(820, y, 19, TEXT, s);
         s[0] = r.grade;
         s[1] = 0;
-        label(878, y, 19, GREEN, s);
-        char date[11];
-        memcpy(date, rows[i]->date, 10);
-        date[10] = 0;
-        label(994, y, 17, MUTED, date);
+        label(1100, y, 19, TEXT, s);
     }
     if (!n)
-        label(65, 357, 21, MUTED, "暂无完整成绩，开始一场演奏吧");
+        label(70, 357, 20, MUTED, rows ? "暂无成绩" : "加载失败");
     free(rows);
-    button(a, 48, 677, 180, 44, "上一页", ACT_RANK_PREV, 0, a->rank_page > 0, false);
-    button(a, 248, 677, 180, 44, "下一页", ACT_RANK_NEXT, 0, (a->rank_page + 1) * 8 < n, false);
-    snprintf(s, sizeof(s), "第 %d 页  /  %d 条成绩", a->rank_page + 1, n);
-    label(480, 691, 18, MUTED, s);
-}
-/**
- * @brief 绘制音乐音量与输入偏移设置页。
- * 参数：a 提供 settings 与 settings_writable。
- * 返回：无返回值；登记 ±5 音量、±5ms 校准和保存按钮。
- * 说明：数值边界与磁盘写入由 action/settings_save
- * 负责；当读取设置失败导致不可写时禁用保存，保留损坏或未知版本文件。
- */
-static void settings(App *a) {
-    heading(a, "设置", "使用音乐时钟判定；正偏移表示按键被视为更晚发生");
-    gfx_rect(48, 153, 1184, 467, PANEL, 14);
-    char s[256];
-    label(85, 198, 25, TEXT, "音乐音量");
-    snprintf(s, sizeof(s), "%d%%", a->settings.music);
-    label(555, 202, 27, CYAN, s);
-    button(a, 705, 191, 95, 52, "- 5", ACT_VOLUME, -5, true, false);
-    button(a, 825, 191, 95, 52, "+ 5", ACT_VOLUME, 5, true, false);
-    label(85, 316, 25, TEXT, "输入校准偏移");
-    snprintf(s, sizeof(s), "%+d ms", a->settings.offset);
-    label(555, 320, 27, CYAN, s);
-    button(a, 705, 310, 95, 52, "- 5", ACT_OFFSET, -5, true, false);
-    button(a, 825, 310, 95, 52, "+ 5", ACT_OFFSET, 5, true, false);
-    label(85, 414, 18, MUTED, "范围 -200 至 +200 ms；联机也使用各自校准偏移");
-    label(85, 456, 18, MUTED, "音乐音量和输入校准会在下次启动时保留");
-    button(a, 85, 527, 340, 58, "保存设置", ACT_SETTINGS_SAVE, 0, a->settings_writable, true);
-}
-/**
- * @brief 绘制固定的操作、判定和联机规则说明。
- * 参数：a 为传给 heading 的应用状态。
- * 返回：无返回值。
- * 说明：说明文字仅展示，不是运行时配置来源；修改规则时需同时检查 engine.c、NC_RULES
- * 与这里的文字，避免展示和实际行为不一致。
- */
-static void help(App *a) {
-    heading(a, "操作与规则", "四轨下落式节奏游戏");
-    const char *lines[] = {
-        "D / F / J / K 分别对应从左到右四条轨道。音符到达粉色判定线时击打。",
-        "单点：按一次。长按：命中头部并保持到尾部；提前松开计 Miss。",
-        "连锁：黄色节点逐个击打。同一时刻出现在不同轨道的音符需要同时按键。",
-        "Perfect ±90ms，Great ±150ms，Good ±220ms；超出窗口计 Miss。",
-        "权重 1000 / 700 / 400 / 0，满分 1,000,000；Miss 清空连击。",
-        "评级 S：准确率至少 95% 且最大连击至少 80%；A / B / C 为 90 / 80 / 70%。",
-        "单人按 Esc 暂停，Enter 恢复；若暂停时有长按，需重新按住对应轨道。",
-        "重新开始、返回选曲、失焦中止的联机局不会保存；联机不支持暂停。",
-        "局域网双人：输入 IPv4 与端口，校验歌曲资源，双方准备后由房主开始。",
-        "只按最终分数比较胜负；同分平局，双方结果确认后写入对应排行榜。",
-        "账号与成绩只保存在本机，账号密码无需与另一台电脑相同。",
-        "数据目录：%APPDATA%/NoteCollisionC。新 C 版与旧 Qt 版使用独立数据。"};
-    for (int i = 0; i < 12; i++)
-        label(65, 155 + i * 43, 19, i % 3 == 0 ? CYAN : TEXT, lines[i]);
+    /* 一页能显示完时不显示无效的翻页按钮，减少空榜页面上的控件。 */
+    if (n > 8) {
+        button(a, 48, 677, 130, 44, "上一页", ACT_RANK_PREV, 0, a->rank_page > 0, false);
+        button(a, 198, 677, 130, 44, "下一页", ACT_RANK_NEXT, 0, (a->rank_page + 1) * 8 < n, false);
+        snprintf(s, sizeof(s), "%d / %d", a->rank_page + 1, (n + 7) / 8);
+        label(362, 688, 18, MUTED, s);
+    }
 }
 /**
  * @brief 把客户区点击坐标映射到上一帧登记的按钮动作。
@@ -556,11 +479,14 @@ void ui_action_at(App *a, int x, int y, Action *action, int *value) {
 /**
  * @brief 按当前页面生成一帧界面与新的按钮命中表。
  * 参数：a 为完整应用状态，page 决定调用哪个页面绘制函数。
- * 返回：无返回值；清零并重建按钮表，最后刷新 EasyX 批量绘制。
+ * 返回：无返回值；清零并重建按钮表，最后提交 Qt 离屏画布。
  * 说明：游戏页使用独立布局，其余页追加 footer。绘制主要读取状态，少数展示性字段如 rank_page
  * 会做纠正；网络和音乐时间推进应在本函数之前完成。
  */
 void ui_render(App *a) {
+    // 全部页面共用一个 Qt 窗口；仅文本框允许组词，演奏页必须直接收到 DFJK 按下/松开。
+    gfx_text_input((a->page == PAGE_LOGIN && (a->focus == 1 || a->focus == 2)) ||
+                   (a->page == PAGE_LAN && (a->focus == 3 || a->focus == 4)));
     a->button_count = 0;
     switch (a->page) {
     case PAGE_LOGIN:
@@ -583,12 +509,6 @@ void ui_render(App *a) {
         break;
     case PAGE_RANK:
         ranking(a);
-        break;
-    case PAGE_SETTINGS:
-        settings(a);
-        break;
-    case PAGE_HELP:
-        help(a);
         break;
     default:
         break;

@@ -2,15 +2,20 @@
   "files.encoding": "utf8",
   "C_Cpp.default.cStandard": "c17",
   "C_Cpp.default.cppStandard": "c++17",
-  "C_Cpp.default.compilerPath": "D:/Qt/Tools/mingw1310_64/bin/gcc.exe",
+  "C_Cpp.default.compilerPath": "${workspaceFolder}/.local/mingw/bin/gcc.exe",
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-  "cmake.cmakePath": "C:/Users/Administrator/AppData/Local/Programs/CMake/cmake-3.31.10-windows-x86_64/bin/cmake.exe",
+  "cmake.cmakePath": "${workspaceFolder}/.local/cmake/bin/cmake.exe",
   "cmake.useCMakePresets": "always",
-  "cmake.configureOnOpen": true,
+  "cmake.configureOnOpen": false,
   "cmake.environment": {
-    "PATH": "D:/Qt/Tools/mingw1310_64/bin;D:/Qt/Tools/Ninja;C:/Users/Administrator/AppData/Local/Programs/CMake/cmake-3.31.10-windows-x86_64/bin;${env:PATH}"
+    "PATH": "${workspaceFolder}/.local/qt/bin;${workspaceFolder}/.local/mingw/bin;${workspaceFolder}/.local/ninja;${workspaceFolder}/.local/cmake/bin;${env:PATH}",
+    "QT_PLUGIN_PATH": "${workspaceFolder}/.local/qt/plugins"
   },
   "terminal.integrated.env.windows": {
-    "PATH": "D:/Qt/Tools/mingw1310_64/bin;D:/Qt/Tools/Ninja;C:/Users/Administrator/AppData/Local/Programs/CMake/cmake-3.31.10-windows-x86_64/bin;${env:PATH}"
-  }
+    "PATH": "${workspaceFolder}/.local/qt/bin;${workspaceFolder}/.local/mingw/bin;${workspaceFolder}/.local/ninja;${workspaceFolder}/.local/cmake/bin;${env:PATH}",
+    "QT_PLUGIN_PATH": "${workspaceFolder}/.local/qt/plugins"
+  },
+  "C_Cpp.clang_format_style": "file",
+  "editor.defaultFormatter": "ms-vscode.cpptools",
+  "cmake.ctestPath": "${workspaceFolder}/.local/cmake/bin/ctest.exe"
 }

@@ -130,7 +130,7 @@ static void pause_run(App *a) {
             return;
         }
         engine_pause(&a->engine);
-        report(a, "按 Enter 继续；活动长按需重新按住");
+        report(a, "");
     }
 }
 /**
@@ -143,7 +143,7 @@ static void pause_run(App *a) {
 static void resume_run(App *a) {
     if (a->engine.state == PAUSED) {
         a->engine.state = RESUME_READY;
-        report(a, "请重新按住活动长按对应的轨道键");
+        report(a, "请按住长按键");
     }
     if (engine_resume(&a->engine)) {
         if (!audio_resume(a->message)) {
@@ -165,11 +165,11 @@ static void save_result(App *a) {
     if (a->saved)
         return;
     if (a->lan_mode && !a->net.confirmed) {
-        report(a, "等待双方最终成绩确认");
+        report(a, "等待成绩确认");
         return;
     }
     if (!stats_valid(&a->engine.stats, a->chart.count, true)) {
-        report(a, "未完成的对局不计入排行榜");
+        report(a, "成绩未完成");
         return;
     }
     Record r = {0};
@@ -211,7 +211,7 @@ static void configure_host(App *a) {
     }
     if (net_configure(&a->net, a->song, a->diff, &a->chart, a->message)) {
         a->loaded_revision = a->net.revision;
-        report(a, "房间已创建，选择曲目并等待玩家加入");
+        report(a, "");
     }
 }
 /**
@@ -250,7 +250,7 @@ static void update_network(App *a) {
             return;
         }
         a->loaded_revision = a->net.revision;
-        report(a, "资源已校验，可点击准备");
+        report(a, "");
     }
     if ((a->net.state == NET_COUNTDOWN || a->net.state == NET_PLAY) && !a->run_active &&
         !a->submitted) {
@@ -313,7 +313,7 @@ static void update_game(App *a) {
                 return;
             }
             a->submitted = true;
-            report(a, "等待双方完成并确认最终成绩");
+            report(a, "等待成绩确认");
         } else
             save_result(a);
         a->page = PAGE_RESULT;
@@ -352,6 +352,9 @@ static void change_selection(App *a, int song, int diff) {
         song = 0;
     a->song = song;
     a->diff = diff;
+    /* 切换榜单条件后回到第一页，避免沿用旧曲目的分页位置。 */
+    if (a->page == PAGE_RANK)
+        a->rank_page = 0;
     audio_close();
     a->media_ready = false;
     if (!load_chart(a))
@@ -378,8 +381,8 @@ static bool port_number(App *a, int *out) {
 }
 /**
  * @brief 根据统一动作枚举执行界面业务操作。
- * 参数：a 为应用状态；act 是按钮/键盘映射的 Action；value 为难度、偏移量或模式等动作附参。
- * 返回：无返回值，操作结果体现在 a 的页面、设置、网络状态及 message。
+ * 参数：a 为应用状态；act 是按钮/键盘映射的 Action；value 为难度等动作附参。
+ * 返回：无返回值，操作结果体现在 a 的页面、网络状态及 message。
  * 说明：集中处理账号、页面导航、选曲、开局、重开、保存、联机准备和再来一局。绘制模块只登记动作，不直接执行业务；各网络/存储函
  * 数仍检查自己的前置条件。
  */
@@ -407,7 +410,7 @@ static void action(App *a, Action act, int value) {
             if (act == ACT_REGISTER) {
                 a->registering = false;
                 a->password[0] = 0;
-                report(a, "账号创建成功，请输入密码登录");
+                report(a, "注册成功");
             } else {
                 a->password[0] = 0;
                 a->page = PAGE_HOME;
@@ -420,30 +423,23 @@ static void action(App *a, Action act, int value) {
         a->lan_mode = false;
         net_leave(&a->net);
         a->page = PAGE_SELECT;
-        load_chart(a);
-        report(a, "");
+        if (load_chart(a))
+            report(a, "");
         break;
     case ACT_LAN:
         leave_room(a);
         a->lan_mode = true;
         a->page = PAGE_LAN;
-        load_chart(a);
-        report(a, "创建房间，或输入房主的 IPv4 地址和端口");
+        if (load_chart(a))
+            report(a, "");
         break;
     case ACT_RANK:
+        /* 排行榜固定展示单人成绩，离开旧联机会话才能正常切换曲目。 */
+        leave_room(a);
         a->page = PAGE_RANK;
-        a->rank_mode = 0;
         a->rank_page = 0;
-        load_chart(a);
-        report(a, "");
-        break;
-    case ACT_SETTINGS:
-        a->page = PAGE_SETTINGS;
-        report(a, "");
-        break;
-    case ACT_HELP:
-        a->page = PAGE_HELP;
-        report(a, "");
+        if (load_chart(a))
+            report(a, "");
         break;
     case ACT_LOGOUT:
         leave_room(a);
@@ -479,7 +475,7 @@ static void action(App *a, Action act, int value) {
             a->lan_mode = true;
             a->loaded_revision = 0;
             if (net_host(&a->net, port, a->name, a->message))
-                report(a, "房间已创建，等待另一位玩家加入");
+                report(a, "等待加入");
         }
     } break;
     case ACT_JOIN: {
@@ -508,12 +504,12 @@ static void action(App *a, Action act, int value) {
             leave_room(a);
             a->lan_mode = true;
             a->page = PAGE_LAN;
-            report(a, "请重新创建或加入房间");
+            report(a, "");
         } else
             solo_start(a);
         break;
     case ACT_ABORT:
-        abort_run(a, "已返回选曲，本局成绩不保存");
+        abort_run(a, "");
         break;
     case ACT_SAVE:
         save_result(a);
@@ -525,34 +521,8 @@ static void action(App *a, Action act, int value) {
             a->loaded_revision = 0;
             a->media_ready = false;
             a->page = PAGE_LAN;
-            report(a, "正在为下一局重新加载曲目");
+            report(a, "加载中");
         }
-        break;
-    case ACT_VOLUME:
-        a->settings.music += value;
-        if (a->settings.music < 0)
-            a->settings.music = 0;
-        if (a->settings.music > 100)
-            a->settings.music = 100;
-        if (a->media_ready)
-            audio_volume(a->settings.music);
-        break;
-    case ACT_OFFSET:
-        a->settings.offset += value;
-        if (a->settings.offset < -200)
-            a->settings.offset = -200;
-        if (a->settings.offset > 200)
-            a->settings.offset = 200;
-        break;
-    case ACT_SETTINGS_SAVE:
-        if (!a->settings_writable)
-            report(a, "旧版、损坏或未知设置文件已保留，不能覆盖");
-        else if (settings_save(a->data, &a->settings, a->message))
-            report(a, "设置已保存");
-        break;
-    case ACT_RANK_MODE:
-        a->rank_mode = value;
-        a->rank_page = 0;
         break;
     case ACT_RANK_PREV:
         if (a->rank_page > 0)
@@ -731,7 +701,7 @@ int app_run(int argc, char **argv) {
     net_reset(&a->net);
     load_chart(a);
     report(a, warning);
-    if (!gfx_open(1280, 800, "音符碰撞 | C17 + EasyX")) {
+    if (!gfx_open(1280, 800, "音符碰撞")) {
         store_free(&a->store);
         net_shutdown();
         free(a);

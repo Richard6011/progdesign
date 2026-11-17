@@ -2,18 +2,22 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "音符碰撞 C / EasyX",
+      "name": "音符碰撞 C / Qt",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/debug/NoteCollision.exe",
       "cwd": "${workspaceFolder}/build/debug",
       "MIMode": "gdb",
-      "miDebuggerPath": "D:/Qt/Tools/mingw1310_64/bin/gdb.exe",
+      "miDebuggerPath": "${workspaceFolder}/.local/mingw/bin/gdb.exe",
       "preLaunchTask": "音符碰撞 C：构建",
       "environment": [
         {
           "name": "PATH",
-          "value": "D:/Qt/Tools/mingw1310_64/bin;${env:PATH}"
+          "value": "${workspaceFolder}/.local/qt/bin;${workspaceFolder}/.local/mingw/bin;${workspaceFolder}/.local/ninja;${workspaceFolder}/.local/cmake/bin;${env:PATH}"
+        },
+        {
+          "name": "QT_PLUGIN_PATH",
+          "value": "${workspaceFolder}/.local/qt/plugins"
         }
       ],
       "setupCommands": [
@@ -21,6 +25,10 @@
           "text": "-enable-pretty-printing",
           "ignoreFailures": true
         }
+      ],
+      "args": [
+        "--data-dir",
+        "${workspaceFolder}/.local/debug-data"
       ]
     }
   ]

@@ -3,18 +3,25 @@
   "configurePresets": [
     {
       "name": "c-debug",
+      "displayName": "C17 + Qt / Debug",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/debug",
+      "environment": {
+        "PATH": "${sourceDir}/.local/qt/bin;${sourceDir}/.local/mingw/bin;${sourceDir}/.local/ninja;${sourceDir}/.local/cmake/bin;$penv{PATH}",
+        "QT_PLUGIN_PATH": "${sourceDir}/.local/qt/plugins"
+      },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "D:/Qt/Tools/mingw1310_64/bin/gcc.exe",
-        "CMAKE_CXX_COMPILER": "D:/Qt/Tools/mingw1310_64/bin/g++.exe",
-        "CMAKE_MAKE_PROGRAM": "D:/Qt/Tools/Ninja/ninja.exe",
+        "CMAKE_C_COMPILER": "${sourceDir}/.local/mingw/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "${sourceDir}/.local/mingw/bin/g++.exe",
+        "CMAKE_MAKE_PROGRAM": "${sourceDir}/.local/ninja/ninja.exe",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/.local/qt",
         "CMAKE_EXPORT_COMPILE_COMMANDS": true
       }
     },
     {
       "name": "c-release",
+      "displayName": "C17 + Qt / Release",
       "inherits": "c-debug",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
