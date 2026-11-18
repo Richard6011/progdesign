@@ -58,25 +58,3 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/Development.ps1 -Actio
 两台电脑使用相同提交构建的同一发行包，连接相同局域网。房主创建房间，客人填写房主的 IPv4 地址和端口；双人双方准备后由房主开始。跨电脑时不能填 `127.0.0.1`，它只指向本机。
 
 本版虽用 Qt 画窗口，但仍使用 C 版协议 2，不能和旧 Qt 业务版本混联。账号仅在本机保存，不通过局域网交换密码。Windows 网络访问提示由使用者依据所在网络处理。
-
-## 两台电脑交替开发
-
-第一次换电脑：克隆 main、安装匹配工具、运行 ConfigureLocal.ps1，打开“程序设计”Profile。不要复制 build 或 .local。
-
-每次开始前确认上一台电脑已提交并推送，且本机工作区干净：
-
-```powershell
-cd D:/progdesign
-git status
-git pull --ff-only origin main
-# 开发后构建、测试
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/Development.ps1 -Action Test
-git diff
-git add src tools .vscode CMakeLists.txt CMakePresets.json README.md docs .gitignore third_party/NOTICE.md
-git commit -m "说明本次修改"
-git push origin main
-```
-
-下一台电脑先 pull，再开发。若有未提交工作，先 commit，或用 `git stash push -u` 暂存，pull 后再 `git stash pop`；发生冲突先解决并测试，不能用强制推送覆盖另一台的工作。Qt 改造和界面精简随本次提交同步，第二台电脑拉取后需重新构建。
-
-当前 Qt 版本的本机验证结果见 [本机部署验证](docs/本机部署验证.md)。
