@@ -1,8 +1,6 @@
 #ifndef NC_NETWORK_H
 #define NC_NETWORK_H
-#include "json.h"
 #include "nc.h"
-#define NET_BUFFER 65540
 typedef enum {
     NET_IDLE,
     NET_LISTEN,
@@ -14,20 +12,26 @@ typedef enum {
     NET_DONE,
     NET_ABORT
 } NetState;
+/**
+ * @brief 同一 Windows x64 版本交换的定长 TCP 消息。
+ * 说明：value 表示版本、曲目、准备开关或分数，extra 表示难度。time/echo 用于校时和开局。
+ * text 按消息类型存放昵称、两段各 64 字节的资源指纹或对局编号。
+ */
+typedef struct {
+    int32_t type, value, extra, revision;
+    int64_t time, echo;
+    char text[128];
+} NetPacket;
 typedef struct {
     uintptr_t listener, socket;
     NetState state;
-    bool host, handshake, ready, peer_ready, configured, peer_verified;
-    bool peer_finished, confirmed;
-    int song, difficulty, revision;
-    char name[128], peer[128], match[65], config_hash[65], audio_hash[65], chart_id[128];
-    int count;
-    Stats peer_stats;
-    int peer_time;
-    unsigned char rx[NET_BUFFER], tx[NET_BUFFER * 2];
+    bool host, handshake, ready, peer_ready, peer_verified, peer_finished;
+    int song, difficulty, revision, peer_score;
+    char name[128], peer[128], match[65], fingerprints[128];
+    NetPacket rx;
+    unsigned char tx[32 * sizeof(NetPacket)];
     size_t rxlen, txlen;
-    int send_seq, recv_seq;
-    int64_t last_rx, last_ping, since, target, last_stats, ping_time, offset;
+    int64_t last_rx, next_ping, since, target, next_score, offset;
     int samples;
     int64_t best_rtt;
     int port;
@@ -53,17 +57,11 @@ void net_shutdown(void);
  */
 void net_reset(Network *net);
 /**
- * @brief 创建只接纳一位客人的 IPv4 TCP 房间。
- * 返回：监听与非阻塞设置成功返回 true，否则返回 false。
+ * @brief 创建房间或异步连接指定房主 IPv4 和端口。
+ * 返回：监听或异步连接已启动返回 true，失败返回 false。
  * 详见：network.c 的同名函数定义（含参数、步骤及边界说明）。
  */
-bool net_host(Network *net, int port, const char *name, char *error);
-/**
- * @brief 异步连接指定房主 IPv4 和端口。
- * 返回：立即成功或已启动非阻塞连接返回 true，参数/创建/立即连接失败返回 false。
- * 详见：network.c 的同名函数定义（含参数、步骤及边界说明）。
- */
-bool net_join(Network *net, const char *ip, int port, const char *name, char *error);
+bool net_open(Network *net, const char *ip, int port, const char *name, char *error);
 /**
  * @brief 关闭监听和对端连接，回到空闲会话。
  * 返回：无返回值；句柄关闭后调用 net_reset 清空全部本局状态。
@@ -87,13 +85,13 @@ void net_poll(Network *net);
  * 返回：满足状态并成功入队返回 true，否则返回 false。
  * 详见：network.c 的同名函数定义（含参数、步骤及边界说明）。
  */
-bool net_configure(Network *net, int song, int difficulty, const Chart *chart, char *error);
+bool net_configure(Network *net, int song, int difficulty, const Chart *chart);
 /**
  * @brief 客人核对本地谱面，并向房主确认资源匹配。
- * 返回：房主侧直接返回 true；客人指纹与数量匹配并入队成功返回 true，否则返回 false。
+ * 返回：客人指纹匹配且消息成功入队返回 true，否则返回 false。
  * 详见：network.c 的同名函数定义（含参数、步骤及边界说明）。
  */
-bool net_verify(Network *net, const Chart *chart, char *error);
+bool net_verify(Network *net, const Chart *chart);
 /**
  * @brief 切换本机准备状态并通知对方。
  * 返回：前置条件满足且消息入队成功返回 true，否则返回 false。
@@ -107,17 +105,17 @@ bool net_ready(Network *net, char *error);
  */
 bool net_start(Network *net, char *error);
 /**
- * @brief 以约 100ms 间隔发布本机累计比分统计。
- * 返回：无返回值；不满足阶段、已提交结束或未到节流间隔时不发送。
+ * @brief 以约 100ms 间隔发布本机累计分数。
+ * 返回：无返回值。只在演奏阶段且到达发送时刻时入队。
  * 详见：network.c 的同名函数定义（含参数、步骤及边界说明）。
  */
-void net_stats(Network *net, const Stats *stats, int time);
+void net_score(Network *net, int score);
 /**
  * @brief 提交本机完整成绩并进入等待确认阶段。
- * 返回：成功入队最终统计返回 true；不完整、重复或状态非法返回 false。
+ * 返回：成功入队最终分数返回 true；重复提交或入队失败返回 false。
  * 详见：network.c 的同名函数定义（含参数、步骤及边界说明）。
  */
-bool net_finish(Network *net, const Stats *stats, char *error);
+bool net_finish(Network *net, int score);
 /**
  * @brief 由已完成对局的房主发起再来一局。
  * 返回：合法并将 rematch 请求入队返回 true，否则返回 false。
@@ -130,11 +128,4 @@ bool net_rematch(Network *net, char *error);
  * 详见：network.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 void net_addresses(char *out, size_t capacity);
-/* Testable frame codec: big-endian length, bounded UTF-8 JSON body. */
-/**
- * @brief 从累计字节中提取一个限长 JSON 消息帧。
- * 返回：返回 0 表示半包，1 表示完整帧，-1 表示非法；成功时 *used=4+正文长度。
- * 详见：network.c 的同名函数定义（含参数、步骤及边界说明）。
- */
-int net_frame(const unsigned char *data, size_t length, cJSON **out, size_t *used);
 #endif

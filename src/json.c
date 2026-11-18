@@ -21,8 +21,7 @@ bool json_int(const cJSON *o, const char *key, int lo, int hi, int *out) {
  * @brief 读取非空且可完整装入缓冲区的 JSON 字符串。
  * 参数：o 为对象；key 为字段名；out 为输出缓冲区；cap 为含结尾零的字节容量。
  * 返回：字段存在、类型正确且字节长度小于 cap 时返回 true，否则返回 false。
- * 说明：使用大小写敏感查找，不接受空字符串或截断结果。这里不检查 UTF-8
- * 字符语义；网络帧和账号模块在各自边界执行进一步验证。
+ * 说明：使用大小写敏感查找，不接受空字符串或截断结果。账号模块会在表单提交时验证 UTF-8 字符。
  */
 bool json_str(const cJSON *o, const char *key, char *out, size_t cap) {
     cJSON *v = cJSON_GetObjectItemCaseSensitive(o, key);
@@ -72,37 +71,16 @@ bool json_save(const char *path, const cJSON *o, char *error) {
  * @brief 把八项演奏统计转换为 JSON 对象。
  * 参数：s 为借用的 Stats，预期已由调用方确认有效。
  * 返回：返回新建对象指针；调用方取得所有权，需要删除或挂到另一棵 JSON 树上。
- * 说明：字段使用协议/存储共用名称，包含四类数量、combo、maxCombo、finalized、units；此处只转换，不
- * 重新校验或计算最终分数。
+ * 说明：沿用既有存档字段，包含四类数量、combo、maxCombo、finalized、units。
  */
 cJSON *stats_json(const Stats *s) {
     cJSON *o = cJSON_CreateObject();
-    cJSON_AddNumberToObject(o, "perfect", s->perfect);
-    cJSON_AddNumberToObject(o, "great", s->great);
-    cJSON_AddNumberToObject(o, "good", s->good);
-    cJSON_AddNumberToObject(o, "miss", s->miss);
+    static const char *const keys[] = {"perfect", "great", "good", "miss"};
+    for (int j = PERFECT; j <= MISS; j++)
+        cJSON_AddNumberToObject(o, keys[j], s->hits[j]);
     cJSON_AddNumberToObject(o, "combo", s->combo);
     cJSON_AddNumberToObject(o, "maxCombo", s->max_combo);
     cJSON_AddNumberToObject(o, "finalized", s->finalized);
     cJSON_AddNumberToObject(o, "units", (double)s->units);
     return o;
-}
-/**
- * @brief 从 JSON 读出统计并执行数值与关系检查。
- * 参数：o 为统计对象；s 为输出；n 为已限制在 1—NC_NOTES 的音符总数；complete 指定是否完整。
- * 返回：所有字段合法且 stats_valid 通过返回 true，否则返回 false。
- * 说明：先清零 s，再逐项读取；失败时 s 可能是部分已写字段，不能视为有效统计。units 先按 n*1000 限定为
- * int，再赋给 int64_t，避免接受伪造的超范围权重。
- */
-bool stats_parse(const cJSON *o, Stats *s, int n, bool complete) {
-    int units;
-    memset(s, 0, sizeof(*s));
-    if (!json_int(o, "perfect", 0, n, &s->perfect) || !json_int(o, "great", 0, n, &s->great) ||
-        !json_int(o, "good", 0, n, &s->good) || !json_int(o, "miss", 0, n, &s->miss) ||
-        !json_int(o, "combo", 0, n, &s->combo) || !json_int(o, "maxCombo", 0, n, &s->max_combo) ||
-        !json_int(o, "finalized", 0, n, &s->finalized) ||
-        !json_int(o, "units", 0, n * 1000, &units))
-        return false;
-    s->units = units;
-    return stats_valid(s, n, complete);
 }

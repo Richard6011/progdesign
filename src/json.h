@@ -33,10 +33,4 @@ bool json_save(const char *path, const cJSON *o, char *error);
  * 详见：json.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 cJSON *stats_json(const Stats *s);
-/**
- * @brief 从 JSON 读出统计并执行数值与关系检查。
- * 返回：所有字段合法且 stats_valid 通过返回 true，否则返回 false。
- * 详见：json.c 的同名函数定义（含参数、步骤及边界说明）。
- */
-bool stats_parse(const cJSON *o, Stats *s, int count, bool complete);
 #endif

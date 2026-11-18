@@ -11,41 +11,12 @@ static const int weights[4] = {1000, 700, 400, 0};
  * 清空连击，其余加一。函数不负责去重，调用者必须保证同一判定单元只提交一次。
  */
 void stats_apply(Stats *s, Judgement j) {
-    if (j == PERFECT)
-        s->perfect++;
-    else if (j == GREAT)
-        s->great++;
-    else if (j == GOOD)
-        s->good++;
-    else
-        s->miss++;
+    s->hits[j]++;
     s->units += weights[j];
     s->finalized++;
-    if (j == MISS)
-        s->combo = 0;
-    else
-        s->combo++;
+    s->combo = j == MISS ? 0 : s->combo + 1;
     if (s->combo > s->max_combo)
         s->max_combo = s->combo;
-}
-/**
- * @brief 检查统计字段范围、计数和分值之间是否自洽。
- * 参数：s 为待验证统计；n 为谱面固定音符数；complete 指定是否要求全部判定完成。
- * 返回：所有检查通过返回 true，否则返回 false；不修改输入。
- * 说明：除非负与上界，还检查 finalized 等于四类总和、units 等于加权和、连击不超成功数量，以及 Miss
- * 分隔下最大连击可覆盖的成功数量。网络与存储均复用这些约束，但它不能证明输入来自真实击键。
- */
-bool stats_valid(const Stats *s, int n, bool complete) {
-    if (n < 1 || n > NC_NOTES || s->perfect < 0 || s->great < 0 || s->good < 0 || s->miss < 0 ||
-        s->finalized < 0 || s->finalized > n || s->perfect > n || s->great > n || s->good > n ||
-        s->miss > n || s->combo < 0 || s->max_combo < s->combo || s->max_combo > n)
-        return false;
-    int success = s->perfect + s->great + s->good;
-    return s->finalized == success + s->miss &&
-           s->units == 1000LL * s->perfect + 700LL * s->great + 400LL * s->good &&
-           s->max_combo <= success && success <= (int64_t)s->max_combo * (s->miss + 1) &&
-           (s->miss || (s->combo == success && s->max_combo == success)) &&
-           (!complete || s->finalized == n);
 }
 /**
  * @brief 根据固定音符总数计算标准化成绩。
@@ -62,15 +33,15 @@ Result stats_result(const Stats *s, int n) {
     r.score = (int)(1000000LL * s->units / (1000LL * n));
     r.accuracy = (double)s->units / (1000.0 * n);
     r.complete = s->finalized == n;
-    r.fc = r.complete && !s->miss;
-    r.ap = r.complete && s->perfect == n;
-    if (s->units * 100 >= 95000LL * n && 100LL * s->max_combo >= 80LL * n)
+    r.fc = r.complete && !s->hits[MISS];
+    r.ap = r.complete && s->hits[PERFECT] == n;
+    if (r.score >= 950000 && 100LL * s->max_combo >= 80LL * n)
         r.grade = 'S';
-    else if (s->units * 100 >= 90000LL * n)
+    else if (r.score >= 900000)
         r.grade = 'A';
-    else if (s->units * 100 >= 80000LL * n)
+    else if (r.score >= 800000)
         r.grade = 'B';
-    else if (s->units * 100 >= 70000LL * n)
+    else if (r.score >= 700000)
         r.grade = 'C';
     return r;
 }
@@ -169,33 +140,34 @@ void engine_tick(Engine *e, int time) {
     }
 }
 /**
- * @brief 处理一条轨道从松开到按下的输入。
- * 参数：e 为引擎；lane 为 0—3；time 为音乐位置。
- * 返回：命中候选音符或登记恢复阶段按键时返回 true；无候选、重复按住、非法轨道/状态/倒退时返回 false。
- * 说明：先补算该时刻前的到期事件，再按谱面顺序用 time+offset 寻找窗口内第一个待判音符。单点/连锁立即结算，长按仅进入
- * HOLDING 并记录头部等级。RESUME_READY 中只记按住状态，实际是否继续由 engine_resume 判断。
+ * @brief 处理某轨按下或松开，同时推进该时刻的判定。
+ * 参数：e 为引擎；lane 为 0—3；time 为音乐位置；pressed 表示按下。
+ * 返回：本次输入处理到音符或登记了恢复阶段按键时返回 true。
+ * 说明：先用旧按住状态结算到期事件，所以正好在长按尾部松开仍成功。提前松开将活动长按记为 Miss。
+ * 按下时从谱面找窗口内第一枚待判音符，长按头部记录等级；恢复准备时只记录按键。
  */
-bool engine_press(Engine *e, int lane, int time) {
+bool engine_key(Engine *e, int lane, int time, bool pressed) {
     if (lane < 0 || lane > 3)
         return false;
-    if (e->state == RESUME_READY) {
-        e->down[lane] = true;
+    if (e->state == RESUME_READY || (e->state == PAUSED && !pressed)) {
+        e->down[lane] = pressed;
         return true;
     }
     if (e->state != PLAYING || time < e->now)
         return false;
     engine_tick(e, time);
-    if (e->state != PLAYING || e->down[lane])
+    if (pressed && (e->state != PLAYING || e->down[lane]))
         return false;
-    e->down[lane] = true;
+    e->down[lane] = pressed;
+    NoteState wanted = pressed ? PENDING : HOLDING;
     for (int i = 0; i < e->chart->count; i++) {
         const Note *n = &e->chart->notes[i];
-        if (n->lane != lane || e->runtime[i].state != PENDING)
+        if (n->lane != lane || e->runtime[i].state != wanted)
             continue;
-        Judgement j = classify(time + e->offset - n->time);
-        if (j == MISS)
+        Judgement j = pressed ? classify(time + e->offset - n->time) : MISS;
+        if (pressed && j == MISS)
             continue;
-        if (n->type == HOLD) {
+        if (pressed && n->type == HOLD) {
             e->runtime[i].state = HOLDING;
             e->runtime[i].head = j;
         } else
@@ -203,28 +175,6 @@ bool engine_press(Engine *e, int lane, int time) {
         return true;
     }
     return false;
-}
-/**
- * @brief 处理轨道松开，并将提前放开的活动长按记为 Miss。
- * 参数：e 为引擎；lane 为 0—3；time 为音乐位置。
- * 返回：无返回值；非法轨道、非运行状态或倒退输入被忽略。
- * 说明：先保持按住状态调用 engine_tick，再清除
- * down，因此在精确尾时刻松开仍算成功。暂停/恢复准备阶段只清按键，不让长按失败。
- */
-void engine_release(Engine *e, int lane, int time) {
-    if (lane < 0 || lane > 3)
-        return;
-    if (e->state == RESUME_READY || e->state == PAUSED) {
-        e->down[lane] = false;
-        return;
-    }
-    if (e->state != PLAYING || time < e->now)
-        return;
-    engine_tick(e, time);
-    e->down[lane] = false;
-    for (int i = 0; i < e->chart->count; i++)
-        if (e->chart->notes[i].lane == lane && e->runtime[i].state == HOLDING)
-            finish_note(e, i, MISS, time);
 }
 /**
  * @brief 冻结可暂停的引擎状态。
@@ -241,7 +191,7 @@ void engine_pause(Engine *e) {
 }
 /**
  * @brief 仅在活动长按都已重新按住时恢复判定。
- * 参数：e 必须处于 RESUME_READY；恢复所需轨道通过 engine_press 登记。
+ * 参数：e 必须处于 RESUME_READY；恢复所需轨道通过 engine_key 登记。
  * 返回：所有活动长按的轨道都按住时返回 true 并置 PLAYING，否则返回 false。
  * 说明：没有活动长按可立即恢复；这里不推进音乐位置、不播放音频，应用层只有在成功后才恢复音乐。
  */

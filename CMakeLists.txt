@@ -15,7 +15,7 @@ add_library(nc_core STATIC src/platform.c src/engine.c src/json.c src/assets.c s
 target_include_directories(nc_core PUBLIC src third_party/cjson)
 target_compile_definitions(nc_core PUBLIC _CRT_SECURE_NO_WARNINGS WINVER=0x0601 _WIN32_WINNT=0x0601)
 target_compile_options(nc_core PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(nc_core PUBLIC winmm ws2_32 bcrypt shell32 ole32)
+target_link_libraries(nc_core PUBLIC winmm ws2_32 bcrypt crypt32 shell32 ole32)
 add_executable(NoteCollision WIN32 src/main.c src/ui.c src/qt_bridge.cpp)
 target_compile_definitions(NoteCollision PRIVATE UNICODE _UNICODE)
 target_compile_options(NoteCollision PRIVATE -Wall -Wextra -Wno-unknown-pragmas)

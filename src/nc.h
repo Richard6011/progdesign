@@ -9,7 +9,7 @@
 #define NC_PATH 1024
 #define NC_ERROR 512
 #define NC_RULES 2
-#define NC_PROTOCOL 3
+#define NC_PROTOCOL 4
 typedef enum { TAP, HOLD, CHAIN } NoteType;
 typedef enum { PENDING, HOLDING, HIT, MISSED } NoteState;
 typedef enum { PERFECT, GREAT, GOOD, MISS } Judgement;
@@ -37,7 +37,7 @@ typedef struct {
     char root[NC_PATH];
 } Library;
 typedef struct {
-    int perfect, great, good, miss, combo, max_combo, finalized;
+    int hits[4], combo, max_combo, finalized;
     int64_t units;
 } Stats;
 typedef struct {
@@ -60,15 +60,18 @@ typedef struct {
     int music, offset;
 } Settings;
 typedef struct {
-    char session[65], match[65], name[128], opponent[128], chart[128], hash[65], difficulty[16],
-        date[32];
-    int mode, rules, version, count, opponent_score;
-    Stats stats;
+    const char *session, *name, *date, *match, *opponent;
+    const Chart *chart;
+    const Stats *stats;
+    int opponent_score;
 } Record;
 typedef struct {
-    Record *items;
+    const char *name, *date;
+    Result result;
+} RankRow;
+typedef struct {
+    struct cJSON *file, *records;
     int count;
-    bool writable;
     char root[NC_PATH];
 } Store;
 extern const char *nc_difficulties[3];
@@ -181,17 +184,11 @@ void engine_free(Engine *engine);
  */
 void engine_tick(Engine *engine, int time);
 /**
- * @brief 处理一条轨道从松开到按下的输入。
- * 返回：命中候选音符或登记恢复阶段按键时返回 true；无候选、重复按住、非法轨道/状态/倒退时返回 false。
+ * @brief 处理某轨按下或松开，同时推进该时刻的判定。
+ * 返回：命中候选音符、处理长按松手或登记恢复阶段按键时返回 true。
  * 详见：engine.c 的同名函数定义（含参数、步骤及边界说明）。
  */
-bool engine_press(Engine *engine, int lane, int time);
-/**
- * @brief 处理轨道松开，并将提前放开的活动长按记为 Miss。
- * 返回：无返回值；非法轨道、非运行状态或倒退输入被忽略。
- * 详见：engine.c 的同名函数定义（含参数、步骤及边界说明）。
- */
-void engine_release(Engine *engine, int lane, int time);
+bool engine_key(Engine *engine, int lane, int time, bool pressed);
 /**
  * @brief 冻结可暂停的引擎状态。
  * 返回：无返回值；合法状态变为 PAUSED，并清空四轨物理按住状态。
@@ -210,12 +207,6 @@ bool engine_resume(Engine *engine);
  * 详见：engine.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 void stats_apply(Stats *stats, Judgement judgement);
-/**
- * @brief 检查统计字段范围、计数和分值之间是否自洽。
- * 返回：所有检查通过返回 true，否则返回 false；不修改输入。
- * 详见：engine.c 的同名函数定义（含参数、步骤及边界说明）。
- */
-bool stats_valid(const Stats *stats, int count, bool complete);
 /**
  * @brief 根据固定音符总数计算标准化成绩。
  * 返回：返回 Result；没有可用谱面时为零分、D 级且不完整。
@@ -254,12 +245,11 @@ void store_free(Store *store);
  */
 bool store_save(Store *store, const Record *record, char *error);
 /**
- * @brief 查询某模式下与当前谱面完全匹配的账号最佳成绩榜。
- * 返回：返回写入 out 的数量，最大 cap；无记录或临时分配失败均返回 0。
+ * @brief 查询某模式下与当前谱面匹配的账号最佳成绩榜。
+ * 返回：写入 rows 的实际人数。调用方准备至少 store->count 个位置。
  * 详见：storage.c 的同名函数定义（含参数、步骤及边界说明）。
  */
-int store_ranking(const Store *store, const Chart *chart, int mode, const Record **out,
-                  int capacity);
+int store_ranking(const Store *store, const Chart *chart, int mode, RankRow *rows);
 /**
  * @brief 预加载歌曲，为随后的计划起播准备音频设备。
  * 返回：设备打开且报告时长在谱面时长至谱面时长加 100ms 之间时返回 true，否则返回 false。

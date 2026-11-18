@@ -1,5 +1,6 @@
 /* All page layout, interaction and rhythm rendering are ordinary C. */
 #include "app.h"
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,19 @@ static const uint32_t lanes[4] = {0x6899b4, 0x7e8fb6, 0x9985ad, 0xb18698};
  * 说明：只转发 gfx_text，不登记点击区域，不修改业务数据；文本使用统一的 Qt UTF-8 字体绘制路径。
  */
 static void label(int x, int y, int size, uint32_t c, const char *s) { gfx_text(x, y, size, c, s); }
+/**
+ * @brief 按普通文本标签的样式绘制数值或混排文案。
+ * 参数：位置、字号和颜色与 label 一致；format 和变参遵循 printf 格式。
+ * 返回：无返回值。格式化的文本在本次绘制后释放。
+ */
+static void label_format(int x, int y, int size, uint32_t color, const char *format, ...) {
+    char text[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
+    label(x, y, size, color, text);
+}
 /**
  * @brief 检测鼠标当前坐标是否处于矩形内。
  * 参数：a 提供 mx/my；x/y/w/h 定义客户区矩形，宽高应非负。
@@ -55,14 +69,14 @@ static void btn(App *a, int x, int y, int w, const char *s, Action act) {
 }
 /**
  * @brief 绘制自定义文本输入框并登记焦点动作。
- * 参数：a 含当前焦点与按钮表；x/y/w 为位置；value/hint 为文本；act 为选择该字段的动作；focus
+ * 参数：a 含当前焦点与按钮表；x/y/w 为位置；value/hint 为文本；focus
  * 为字段编号；secret 控制掩码。
  * 返回：无返回值；登记输入框点击区，不直接改 value。
  * 说明：按 500ms 闪烁竖线模拟光标，密码按 UTF-8 字符起始字节数量显示星号且最多 60 个。实际编辑由
  * edit_character 完成；页面须保证按钮表仍有一项容量。
  */
-static void field(App *a, int x, int y, int w, const char *value, const char *hint, Action act,
-                  int focus, bool secret) {
+static void field(App *a, int x, int y, int w, const char *value, const char *hint, int focus,
+                  bool secret) {
     gfx_rect(x, y, w, 54, a->focus == focus ? CYAN : BORDER, 2);
     gfx_rect(x + 1, y + 1, w - 2, 52, PANEL, 0);
     char display[256];
@@ -81,7 +95,7 @@ static void field(App *a, int x, int y, int w, const char *value, const char *hi
         strcat(display, "|");
     label(x + 16, y + 16, 20, value[0] ? TEXT : MUTED,
           value[0] ? display : (a->focus == focus ? display : hint));
-    a->buttons[a->button_count++] = (Button){x, y, w, 54, act, 0};
+    a->buttons[a->button_count++] = (Button){x, y, w, 54, ACT_FOCUS, focus};
 }
 /**
  * @brief 绘制普通页面的统一页头。
@@ -143,9 +157,9 @@ static void login(App *a) {
     gfx_rect(376, 150, 528, 542, PANEL, 4);
     gfx_text_center(416, 174, 448, 42, 28, TEXT, a->registering ? "注册" : "登录");
     label(416, 242, 18, TEXT, "账号");
-    field(a, 416, 274, 448, a->name, "账号", ACT_FIELD_NAME, 1, false);
+    field(a, 416, 274, 448, a->name, "账号", 1, false);
     label(416, 354, 18, TEXT, "密码");
-    field(a, 416, 386, 448, a->password, "密码", ACT_FIELD_PASSWORD, 2, true);
+    field(a, 416, 386, 448, a->password, "密码", 2, true);
     button(a, 416, 474, 448, 54, a->registering ? "注册" : "登录",
            a->registering ? ACT_REGISTER : ACT_LOGIN, 0, true, true);
     btn(a, 416, 548, 448, a->registering ? "返回登录" : "注册账号", ACT_LOGIN_MODE);
@@ -197,7 +211,7 @@ static void select_page(App *a) {
 }
 /**
  * @brief 根据连接阶段绘制大厅及可用操作。
- * 参数：a 含 lan_mode、Network、当前曲目和本机地址。
+ * 参数：a 含 Network、当前曲目和本机地址。
  * 返回：无返回值；登记创建/加入、准备、房主开始及可编辑选曲动作。
  * 说明：空闲/连接/监听时显示 IPv4/端口；已入房显示角色、资源校验和准备状态。按钮启用是 UI
  * 引导，网络模块还会独立检查协议状态，绘制本身不操作 socket。
@@ -209,9 +223,9 @@ static void lobby(App *a) {
     if (free_room || a->net.state == NET_CONNECT || a->net.state == NET_LISTEN) {
         gfx_rect(160, 163, 960, 440, PANEL, 4);
         label(200, 200, 18, TEXT, "房主 IPv4");
-        field(a, 200, 234, 550, a->ip, "IPv4", ACT_FIELD_IP, 3, false);
+        field(a, 200, 234, 550, a->ip, "IPv4", 3, false);
         label(782, 200, 18, TEXT, "端口");
-        field(a, 782, 234, 298, a->port, "9527", ACT_FIELD_PORT, 4, false);
+        field(a, 782, 234, 298, a->port, "9527", 4, false);
         button(a, 200, 326, 420, 54, "创建房间", ACT_HOST, 0, free_room, true);
         button(a, 660, 326, 420, 54, "加入房间", ACT_JOIN, 0, free_room, false);
         label(200, 424, 18, MUTED, "本机 IPv4");
@@ -232,12 +246,9 @@ static void lobby(App *a) {
         label(200, 550, 17, MUTED, a->net.status);
     } else {
         selection(a, 48, 153, connected && a->net.host);
-        char line[256];
         gfx_rect(806, 153, 426, 382, PANEL, 4);
-        snprintf(line, sizeof(line), "%s：%s", a->net.host ? "房主" : "客人", a->name);
-        label(838, 192, 20, TEXT, line);
-        snprintf(line, sizeof(line), "对方：%s", a->net.peer);
-        label(838, 242, 20, TEXT, line);
+        label_format(838, 192, 20, TEXT, "%s：%s", a->net.host ? "房主" : "客人", a->name);
+        label_format(838, 242, 20, TEXT, "对方：%s", a->net.peer);
         label(838, 302, 18, MUTED, a->net.peer_verified ? "资源一致" : "校验中");
         label(838, 344, 18, MUTED, a->net.peer_ready ? "对方已准备" : "对方未准备");
         button(a, 48, 468, 340, 58, a->net.ready ? "取消准备" : "准备", ACT_READY, 0,
@@ -258,18 +269,14 @@ static void lobby(App *a) {
 static void game(App *a) {
     gfx_clear(BG);
     const int left = 350, width = 580, top = 128, bottom = 635;
-    char s[256];
     Result r = stats_result(&a->engine.stats, a->chart.count);
     label(42, 30, 27, TEXT, a->lib.songs[a->song].title);
     label(44, 74, 17, MUTED, a->chart.difficulty);
-    snprintf(s, sizeof(s), "%07d", r.score);
-    label(44, 164, 35, CYAN, s);
+    label_format(44, 164, 35, CYAN, "%07d", r.score);
     label(44, 214, 17, MUTED, "分数");
-    snprintf(s, sizeof(s), "%d", a->engine.stats.combo);
-    label(44, 286, 50, TEXT, s);
+    label_format(44, 286, 50, TEXT, "%d", a->engine.stats.combo);
     label(44, 346, 18, MUTED, "连击");
-    snprintf(s, sizeof(s), "%.2f%%", r.accuracy * 100);
-    label(44, 409, 28, GREEN, s);
+    label_format(44, 409, 28, GREEN, "%.2f%%", r.accuracy * 100);
     label(44, 451, 17, MUTED, "准确率");
     gfx_rect(left - 3, top - 3, width + 6, bottom - top + 60, BORDER, 4);
     for (int l = 0; l < 4; l++) {
@@ -314,10 +321,9 @@ static void game(App *a) {
         const char *names[] = {"PERFECT", "GREAT", "GOOD", "MISS"};
         label(546, 292, 31, a->engine.last == MISS ? RED : CYAN, names[a->engine.last]);
     }
-    if (a->lan_mode) {
+    if (a->net.state != NET_IDLE) {
         label(970, 163, 20, MUTED, "对方分数");
-        snprintf(s, sizeof(s), "%07d", stats_result(&a->net.peer_stats, a->chart.count).score);
-        label(970, 205, 28, PINK, s);
+        label_format(970, 205, 28, PINK, "%07d", a->net.peer_score);
         label(970, 254, 20, TEXT, a->net.peer);
         btn(a, 970, 571, 265, "退出本局", ACT_ABORT);
     } else {
@@ -330,13 +336,12 @@ static void game(App *a) {
         progress = 1;
     gfx_rect(350, 710, width, 5, CARD, 2);
     gfx_rect(350, 710, (int)(width * progress), 5, CYAN, 2);
-    snprintf(s, sizeof(s), "%.1f / %.1f 秒", a->engine.now / 1000.0, a->chart.duration / 1000.0);
-    label(350, 725, 16, MUTED, s);
+    label_format(350, 725, 16, MUTED, "%.1f / %.1f 秒", a->engine.now / 1000.0,
+                 a->chart.duration / 1000.0);
     if (a->countdown) {
         gfx_rect(452, 275, 374, 158, PANEL, 16);
         int seconds = (int)((a->target - nc_now() + 999) / 1000);
-        snprintf(s, sizeof(s), "%d", seconds > 0 ? seconds : 1);
-        label(612, 293, 58, CYAN, s);
+        label_format(612, 293, 58, CYAN, "%d", seconds > 0 ? seconds : 1);
     }
     if (a->engine.state == PAUSED || a->engine.state == RESUME_READY) {
         gfx_rect(418, 264, 446, 242, PANEL, 14);
@@ -356,67 +361,54 @@ static void game(App *a) {
 static void result(App *a) {
     heading(a, "成绩");
     Result r = stats_result(&a->engine.stats, a->chart.count);
-    char s[256];
+    bool lan = a->net.state != NET_IDLE, confirmed = a->net.state == NET_DONE;
     gfx_rect(48, 153, 716, 248, PANEL, 14);
-    char grade[2] = {r.grade, 0};
-    label(80, 190, 99, CYAN, grade);
-    snprintf(s, sizeof(s), "%07d", r.score);
-    label(245, 197, 53, TEXT, s);
-    snprintf(s, sizeof(s), "准确率 %.2f%%    最大连击 %d", r.accuracy * 100,
-             a->engine.stats.max_combo);
-    label(245, 270, 22, MUTED, s);
+    label_format(80, 190, 99, CYAN, "%c", r.grade);
+    label_format(245, 197, 53, TEXT, "%07d", r.score);
+    label_format(245, 270, 22, MUTED, "准确率 %.2f%%    最大连击 %d", r.accuracy * 100,
+                 a->engine.stats.max_combo);
     label(245, 322, 21, GREEN,
           r.ap         ? "ALL PERFECT"
           : r.fc       ? "FULL COMBO"
           : r.complete ? "演奏完成"
                        : "未完成");
-    int values[] = {a->engine.stats.perfect, a->engine.stats.great, a->engine.stats.good,
-                    a->engine.stats.miss};
     const char *names[] = {"Perfect", "Great", "Good", "Miss"};
     for (int i = 0; i < 4; i++) {
         gfx_rect(48 + i * 182, 430, 170, 105, PANEL, 10);
         label(65 + i * 182, 445, 18, MUTED, names[i]);
-        snprintf(s, sizeof(s), "%d", values[i]);
-        label(65 + i * 182, 479, 28, TEXT, s);
+        label_format(65 + i * 182, 479, 28, TEXT, "%d", a->engine.stats.hits[i]);
     }
     gfx_rect(806, 153, 426, 382, PANEL, 14);
-    label(840, 190, 24, TEXT, a->lan_mode ? "对战结果" : "本局信息");
+    label(840, 190, 24, TEXT, lan ? "对战结果" : "本局信息");
     label(840, 247, 21, TEXT, a->lib.songs[a->song].title);
     label(840, 286, 18, MUTED, a->chart.difficulty);
-    if (a->lan_mode) {
-        int peer = stats_result(&a->net.peer_stats, a->chart.count).score;
-        label(840, 333, 27, a->net.confirmed ? CYAN : MUTED,
-              a->net.confirmed ? (r.score == peer  ? "平 局"
-                                  : r.score > peer ? "胜 利"
-                                                   : "落 败")
-                               : "确认中");
-        snprintf(s, sizeof(s), "对方 %s / %d 分", a->net.peer, peer);
-        label(840, 382, 19, TEXT, s);
+    if (lan) {
+        int peer = a->net.peer_score;
+        const char *outcome = r.score == peer ? "平 局" : (r.score > peer ? "胜 利" : "落 败");
+        label(840, 333, 27, confirmed ? CYAN : MUTED, confirmed ? outcome : "确认中");
+        label_format(840, 382, 19, TEXT, "对方 %s / %d 分", a->net.peer, peer);
     }
     label(840, 454, 19, a->saved ? GREEN : MUTED, a->saved ? "已保存" : "未保存");
     button(a, 48, 585, 340, 58,
-           a->lan_mode ? (a->net.host ? "返回房间" : "等待房主") : "重新演奏",
-           a->lan_mode ? ACT_REMATCH : ACT_RESTART, 0,
-           !a->lan_mode || (a->net.confirmed && a->net.host), true);
+           lan ? (a->net.host ? "返回房间" : "等待房主") : "重新演奏",
+           lan ? ACT_REMATCH : ACT_RESTART, 0, !lan || (confirmed && a->net.host), true);
 }
 /**
  * @brief 绘制单人模式下各账号最佳成绩。
  * 参数：a 提供 Store、选曲、diff 和 rank_page。
  * 返回：无返回值；每页显示八条，可修正越界页号并登记翻页/筛选按钮。
- * 说明：借用 store_ranking
- * 返回的记录指针，高分在前，同分沿用相同名次。临时指针数组当帧释放，记录本身不释放；无记录或数组分配失败显示空榜。
+ * 说明：使用 store_ranking 提取的榜单行，高分在前，同分沿用相同名次。临时数组当帧释放，昵称仍由成绩文档持有。
  */
 static void ranking(App *a) {
     heading(a, "排行榜");
-    char s[256];
     label(48, 150, 25, TEXT, a->lib.songs[a->song].title);
     btn(a, 670, 145, 70, "<", ACT_SONG_PREV);
     btn(a, 754, 145, 70, ">", ACT_SONG_NEXT);
     for (int d = 0; d < 3; d++)
         button(a, 48 + d * 150, 211, 138, 45, nc_difficulties[d], ACT_DIFF, d, true, d == a->diff);
     /* 排行入口固定查询单人模式（0）；存储层按账号保留最佳成绩，避免同账号占据多行。 */
-    const Record **rows = malloc(20000 * sizeof(*rows));
-    int n = rows ? store_ranking(&a->store, &a->chart, 0, rows, 20000) : 0;
+    RankRow *rows = malloc((size_t)(a->store.count + 1) * sizeof(*rows));
+    int n = rows ? store_ranking(&a->store, &a->chart, 0, rows) : 0;
     if (a->rank_page * 8 >= n)
         a->rank_page = n ? (n - 1) / 8 : 0;
     gfx_rect(48, 279, 1184, 40, CARD, 2);
@@ -427,23 +419,18 @@ static void ranking(App *a) {
     label(1100, 288, 17, TEXT, "评级");
     int rank = 0, previous = -1;
     for (int i = 0; i < n; i++) {
-        Result r = stats_result(&rows[i]->stats, rows[i]->count);
+        Result r = rows[i].result;
         if (r.score != previous)
             rank = i + 1;
         previous = r.score;
         if (i < a->rank_page * 8 || i >= a->rank_page * 8 + 8)
             continue;
         int y = 340 + (i - a->rank_page * 8) * 40;
-        snprintf(s, sizeof(s), "%d", rank);
-        label(70, y, 19, TEXT, s);
-        label(200, y, 19, TEXT, rows[i]->name);
-        snprintf(s, sizeof(s), "%d", r.score);
-        label(570, y, 19, TEXT, s);
-        snprintf(s, sizeof(s), "%.2f%%", r.accuracy * 100);
-        label(820, y, 19, TEXT, s);
-        s[0] = r.grade;
-        s[1] = 0;
-        label(1100, y, 19, TEXT, s);
+        label_format(70, y, 19, TEXT, "%d", rank);
+        label(200, y, 19, TEXT, rows[i].name);
+        label_format(570, y, 19, TEXT, "%d", r.score);
+        label_format(820, y, 19, TEXT, "%.2f%%", r.accuracy * 100);
+        label_format(1100, y, 19, TEXT, "%c", r.grade);
     }
     if (!n)
         label(70, 357, 20, MUTED, rows ? "暂无成绩" : "加载失败");
@@ -452,8 +439,7 @@ static void ranking(App *a) {
     if (n > 8) {
         button(a, 48, 677, 130, 44, "上一页", ACT_RANK_PREV, 0, a->rank_page > 0, false);
         button(a, 198, 677, 130, 44, "下一页", ACT_RANK_NEXT, 0, (a->rank_page + 1) * 8 < n, false);
-        snprintf(s, sizeof(s), "%d / %d", a->rank_page + 1, (n + 7) / 8);
-        label(362, 688, 18, MUTED, s);
+        label_format(362, 688, 18, MUTED, "%d / %d", a->rank_page + 1, (n + 7) / 8);
     }
 }
 /**

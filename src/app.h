@@ -18,10 +18,7 @@ typedef enum {
     ACT_LOGIN,
     ACT_REGISTER,
     ACT_LOGIN_MODE,
-    ACT_FIELD_NAME,
-    ACT_FIELD_PASSWORD,
-    ACT_FIELD_IP,
-    ACT_FIELD_PORT,
+    ACT_FOCUS,
     ACT_SOLO,
     ACT_LAN,
     ACT_RANK,
@@ -58,10 +55,8 @@ typedef struct {
     Engine engine;
     Page page;
     int song, diff, rank_page, focus;
-    bool registering, lan_mode, saved;
-    bool media_ready, countdown;
-    int64_t target, last_audio_change;
-    int last_audio_position;
+    bool registering, saved, countdown;
+    int64_t target;
     char name[128], password[256], ip[64], port[8], data[NC_PATH], message[NC_ERROR], session[65],
         addresses[512];
     Button buttons[96];

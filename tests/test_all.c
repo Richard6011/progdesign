@@ -2,6 +2,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include "nc.h"
+#include "json.h"
 #include "network.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,10 +19,10 @@ static int checks;
     } while (0)
 static char error[NC_ERROR];
 /**
- * @brief 验证计分权重、完整性和非法统计拒绝。
+ * @brief 验证计分权重、评级和完成状态。
  * 参数：无参数，使用局部 Stats 与 Result。
  * 返回：无返回值；任一 CHECK 失败打印行号并结束测试进程。
- * 说明：覆盖混合判定的 525000 分、无效单位/连击、全 Perfect 百万分和不完整/过大计数，测试不依赖窗口或磁盘。
+ * 说明：覆盖混合判定、全 Perfect、空谱面和演奏尚未结束时的得分。
  */
 static void score_tests(void) {
     Stats s = {0};
@@ -29,15 +30,9 @@ static void score_tests(void) {
     stats_apply(&s, GREAT);
     stats_apply(&s, GOOD);
     stats_apply(&s, MISS);
-    CHECK(stats_valid(&s, 4, true));
     Result r = stats_result(&s, 4);
     CHECK(r.score == 525000);
     CHECK(!r.fc && r.complete && r.grade == 'D');
-    s.units++;
-    CHECK(!stats_valid(&s, 4, true));
-    s.units--;
-    s.max_combo = 0;
-    CHECK(!stats_valid(&s, 4, true));
     s = (Stats){0};
     for (int i = 0; i < 100; i++)
         stats_apply(&s, PERFECT);
@@ -45,10 +40,9 @@ static void score_tests(void) {
     CHECK(r.score == 1000000 && r.ap && r.fc && r.grade == 'S');
     r = stats_result(&s, 0);
     CHECK(r.score == 0 && !r.complete && r.grade == 'D');
-    CHECK(!stats_valid(&s, 99, true));
-    s.perfect = INT_MAX;
-    CHECK(!stats_valid(&s, 100, true));
-    puts("PASS scoring, completeness and impossible statistics");
+    r = stats_result(&s, 200);
+    CHECK(r.score == 500000 && !r.complete && !r.fc && !r.ap);
+    puts("PASS scoring, grades and completeness");
 }
 /**
  * @brief 为判定用例构造轻量的借用谱面。
@@ -79,8 +73,8 @@ static void engine_tests(void) {
         Chart c = tiny(&note, 1);
         Engine e = {0};
         CHECK(engine_start(&e, &c, 0));
-        bool accepted = engine_press(&e, 0, 1000 + offsets[k]);
-        engine_release(&e, 0, 1001 + offsets[k]);
+        bool accepted = engine_key(&e, 0, 1000 + offsets[k], true);
+        engine_key(&e, 0, 1001 + offsets[k], false);
         engine_tick(&e, 1600);
         int d = abs(offsets[k]);
         CHECK(accepted == (d <= 220));
@@ -96,22 +90,22 @@ static void engine_tests(void) {
     Chart c = tiny(notes, 3);
     Engine e = {0};
     CHECK(engine_start(&e, &c, 0));
-    CHECK(engine_press(&e, 0, 1000));
-    CHECK(!engine_press(&e, 0, 1001));
-    engine_release(&e, 0, 1999);
-    CHECK(e.stats.miss == 2);
+    CHECK(engine_key(&e, 0, 1000, true));
+    CHECK(!engine_key(&e, 0, 1001, true));
+    engine_key(&e, 0, 1999, false);
+    CHECK(e.stats.hits[MISS] == 2);
     engine_free(&e);
     CHECK(engine_start(&e, &c, 0));
-    engine_press(&e, 0, 1000);
-    engine_release(&e, 0, 2000);
-    CHECK(e.stats.perfect == 1 && e.stats.miss == 1);
+    engine_key(&e, 0, 1000, true);
+    engine_key(&e, 0, 2000, false);
+    CHECK(e.stats.hits[PERFECT] == 1 && e.stats.hits[MISS] == 1);
     CHECK(e.stats.combo == 1);
     engine_free(&e);
     Engine fine = {0}, slow = {0};
     CHECK(engine_start(&fine, &c, 0));
     CHECK(engine_start(&slow, &c, 0));
-    engine_press(&fine, 0, 1000);
-    engine_press(&slow, 0, 1000);
+    engine_key(&fine, 0, 1000, true);
+    engine_key(&slow, 0, 1000, true);
     for (int t = 1001; t <= 3000; t++)
         engine_tick(&fine, t);
     engine_tick(&slow, 3000);
@@ -119,23 +113,23 @@ static void engine_tests(void) {
     engine_free(&fine);
     engine_free(&slow);
     CHECK(engine_start(&e, &c, 0));
-    engine_press(&e, 0, 1000);
+    engine_key(&e, 0, 1000, true);
     engine_tick(&e, 1100);
     engine_pause(&e);
     engine_tick(&e, 4500);
     CHECK(e.now == 1100);
     e.state = RESUME_READY;
     CHECK(!engine_resume(&e));
-    engine_press(&e, 0, 1100);
+    engine_key(&e, 0, 1100, true);
     CHECK(engine_resume(&e));
-    engine_release(&e, 0, 2000);
-    CHECK(e.stats.perfect == 1);
+    engine_key(&e, 0, 2000, false);
+    CHECK(e.stats.hits[PERFECT] == 1);
     engine_free(&e);
     Note tap = {.id = 1, .lane = 0, .time = 1000, .end = 1000, .type = TAP};
     c = tiny(&tap, 1);
     CHECK(engine_start(&e, &c, 200));
-    CHECK(engine_press(&e, 0, 800));
-    CHECK(e.stats.perfect == 1);
+    CHECK(engine_key(&e, 0, 800, true));
+    CHECK(e.stats.hits[PERFECT] == 1);
     engine_free(&e);
     CHECK(!engine_start(&e, &c, 201));
     puts("PASS timing windows, offsets, hold tail, pause and deterministic combo");
@@ -175,14 +169,14 @@ static void replay(const Chart *c) {
     for (int i = 0; i < c->count * 2; i++) {
         Event *v = &events[i];
         if (v->press)
-            engine_press(&e, v->lane, v->time);
+            engine_key(&e, v->lane, v->time, true);
         else
-            engine_release(&e, v->lane, v->time);
+            engine_key(&e, v->lane, v->time, false);
     }
     engine_tick(&e, c->duration);
     Result r = stats_result(&e.stats, c->count);
     CHECK(r.complete && r.ap && r.score == 1000000);
-    CHECK(e.stats.perfect == c->count);
+    CHECK(e.stats.hits[PERFECT] == c->count);
     engine_free(&e);
     free(events);
 }
@@ -348,27 +342,6 @@ static void resource_tests(Library *l, const char *root) {
     puts("PASS all six charts, group/WAV/SHA-256 checks, lazy loading and complete perfect replays");
 }
 /**
- * @brief 构造一条完整全 Perfect 的存储测试记录。
- * 参数：c 为真实有效谱面；name 为测试昵称。
- * 返回：返回自含字段的 Record 值，具有新 session、当前规则及固定测试 UTC 日期。
- * 说明：只在内存生成，不写文件；判定计数通过 stats_apply 累加，以保证测试样本满足实际存储约束。
- */
-static Record record_make(const Chart *c, const char *name) {
-    Record r = {0};
-    nc_uuid(r.session);
-    nc_copy(r.name, sizeof(r.name), name);
-    nc_copy(r.chart, sizeof(r.chart), c->id);
-    nc_copy(r.hash, sizeof(r.hash), c->hash);
-    nc_copy(r.difficulty, sizeof(r.difficulty), c->difficulty);
-    nc_copy(r.date, sizeof(r.date), "2026-11-16T00:00:00Z");
-    r.rules = NC_RULES;
-    r.version = c->version;
-    r.count = c->count;
-    for (int i = 0; i < c->count; i++)
-        stats_apply(&r.stats, PERFECT);
-    return r;
-}
-/**
  * @brief 验证真实 UTF-8 文件持久化及失败保护。
  * 参数：l 为可用曲库，测试使用其中小星星 Easy。
  * 返回：无返回值，CHECK 失败结束进程。
@@ -398,42 +371,51 @@ static void storage_tests(const Library *l) {
     CHECK(chart_load(l, 1, 0, &c, error));
     Store store = {0};
     CHECK(store_load(&store, root, error));
-    Record one = record_make(&c, "测试玩家");
     /* 先存较低成绩，再存满分，验证榜单选择最高分而不是最早的一局。 */
-    memset(&one.stats, 0, sizeof(one.stats));
-    for (int i = 0; i < c.count; i++)
-        stats_apply(&one.stats, GREAT);
+    Stats perfect = {0}, great = {0};
+    for (int i = 0; i < c.count; i++) {
+        stats_apply(&perfect, PERFECT);
+        stats_apply(&great, GREAT);
+    }
+    Record one = {.session = "one", .name = "测试玩家", .date = "2026-11-16T00:00:00Z",
+                  .chart = &c, .stats = &great};
     CHECK(store_save(&store, &one, error));
     CHECK(store_save(&store, &one, error));
     CHECK(store.count == 1);
-    Record two = record_make(&c, "另一个玩家");
+    Record two = one;
+    two.session = "two";
+    two.name = "另一个玩家";
+    two.stats = &perfect;
     CHECK(store_save(&store, &two, error));
-    Record best = record_make(&c, "测试玩家");
-    nc_copy(best.date, sizeof(best.date), "2026-11-17T00:00:00Z");
+    Record best = two;
+    best.session = "best";
+    best.name = one.name;
+    best.date = "2026-11-17T00:00:00Z";
     CHECK(store_save(&store, &best, error));
-    Record tied = record_make(&c, "测试玩家");
-    nc_copy(tied.date, sizeof(tied.date), "2026-11-15T00:00:00Z");
+    Record tied = best;
+    tied.session = "tied";
+    tied.date = "2026-11-15T00:00:00Z";
     CHECK(store_save(&store, &tied, error));
     /* 联机更早的同分记录仍须隔离，不能替换单人榜中该账号的最佳成绩。 */
-    Record lan = record_make(&c, "测试玩家");
-    lan.mode = 1;
-    nc_uuid(lan.match);
-    nc_copy(lan.opponent, sizeof(lan.opponent), "另一个玩家");
-    nc_copy(lan.date, sizeof(lan.date), "2026-11-14T00:00:00Z");
+    Record lan = tied;
+    lan.session = "lan";
+    lan.match = "match";
+    lan.opponent = two.name;
+    lan.date = "2026-11-14T00:00:00Z";
     CHECK(store_save(&store, &lan, error));
-    const Record *rows[8];
-    CHECK(store_ranking(&store, &c, 0, rows, 8) == 2);
-    CHECK(!strcmp(rows[0]->session, tied.session));
-    CHECK(!strcmp(rows[1]->session, two.session));
-    CHECK(store_ranking(&store, &c, 0, rows, 1) == 1);
-    CHECK(!strcmp(rows[0]->session, tied.session));
-    CHECK(store_ranking(&store, &c, 1, rows, 8) == 1);
-    CHECK(!strcmp(rows[0]->session, lan.session));
+    RankRow rows[8];
+    CHECK(store_ranking(&store, &c, 0, rows) == 2);
+    CHECK(!strcmp(rows[0].name, tied.name) && !strcmp(rows[0].date, tied.date));
+    CHECK(!strcmp(rows[1].name, two.name) && rows[0].result.score == 1000000);
+    CHECK(store_ranking(&store, &c, 1, rows) == 1);
+    CHECK(!strcmp(rows[0].name, lan.name) && !strcmp(rows[0].date, lan.date));
     CHECK(store.count == 5);
     store_free(&store);
     CHECK(store_load(&store, root, error));
     CHECK(store.count == 5);
-    two.stats.miss++;
+    CHECK(store_ranking(&store, &c, 0, rows) == 2);
+    CHECK(!strcmp(rows[0].name, tied.name) && rows[0].result.score == 1000000);
+    perfect.hits[MISS]++;
     CHECK(!store_save(&store, &two, error));
     snprintf(path, sizeof(path), "%s/records.json", root);
     CHECK(nc_atomic(path, "{broken", 7, error));
@@ -483,39 +465,6 @@ static void audio_tests(const Library *lib) {
     puts("PASS real WAV preload, play, pause, resume, clock and missing media");
 }
 /**
- * @brief 验证 TCP 分帧器对半包和坏数据的处理。
- * 参数：无参数，使用本地构造的字节数组。
- * 返回：无返回值，检查返回码、消费长度和 JSON 对象释放。
- * 说明：遍历完整消息到达前的每个截断长度，并覆盖超长前缀、零长度、非法 UTF-8 与对象后尾随字符；这里不需要创建真实
- * socket。
- */
-static void frame_tests(void) {
-    const char *body = "{\"protocol\":2,\"seq\":1}";
-    size_t size = strlen(body), used;
-    unsigned char frame[256];
-    frame[0] = frame[1] = frame[2] = 0;
-    frame[3] = (unsigned char)size;
-    memcpy(frame + 4, body, size);
-    cJSON *o;
-    for (size_t n = 0; n < size + 4; n++)
-        CHECK(net_frame(frame, n, &o, &used) == 0);
-    CHECK(net_frame(frame, size + 4, &o, &used) == 1);
-    CHECK(used == size + 4);
-    cJSON_Delete(o);
-    frame[0] = 1;
-    CHECK(net_frame(frame, size + 4, &o, &used) == -1);
-    frame[0] = frame[3] = 0;
-    CHECK(net_frame(frame, size + 4, &o, &used) == -1);
-    frame[3] = 2;
-    frame[4] = 0xff;
-    frame[5] = 0xff;
-    CHECK(net_frame(frame, 6, &o, &used) == -1);
-    frame[3] = 3;
-    memcpy(frame + 4, "{}x", 3);
-    CHECK(net_frame(frame, 7, &o, &used) == -1);
-    puts("PASS fragmented, oversized, invalid UTF-8 and trailing-data frames");
-}
-/**
  * @brief 在限定时长内交替推进两个测试端的网络状态。
  * 参数：h/g 为已初始化网络对象；ms 为非负等待毫秒数。
  * 返回：无返回值；状态变化留在两个对象中。
@@ -544,10 +493,10 @@ static void healthy(Network *h, Network *g) {
 }
 /**
  * @brief 通过真实 localhost TCP 验证完整对战和异常流程。
- * 参数：l 为有效曲库，提供资源校验与完整统计的基准。
+ * 参数：l 为有效曲库，提供资源校验的基准。
  * 返回：无返回值，所有断言完成后关闭 socket 并配对 Winsock 清理。
  * 说明：建立房主/客人并同步时钟，跑两轮准备、开局、比分与结果确认，中间含
- * rematch；交替改变双方完赛先后顺序，检查复赛紧随确认时仍能观察到成绩。还覆盖重复提交、断线、非法地址及超大帧。
+ * rematch。交替改变双方完赛先后顺序，检查复赛紧随确认时仍能观察到成绩。还覆盖重复提交、断线、非法地址及半包。
  */
 static void network_tests(const Library *l) {
     CHECK(net_init(error));
@@ -555,20 +504,20 @@ static void network_tests(const Library *l) {
     CHECK(h && g);
     net_reset(h);
     net_reset(g);
-    CHECK(net_host(h, 0, "host", error));
+    CHECK(net_open(h, NULL, 0, "host", error));
     CHECK(h->port > 0);
-    CHECK(net_join(g, "127.0.0.1", h->port, "guest", error));
+    CHECK(net_open(g, "127.0.0.1", h->port, "guest", error));
     pump(h, g, 2000);
     healthy(h, g);
-    CHECK(h->handshake && g->handshake && g->samples >= 3 && h->samples >= 3);
+    CHECK(h->handshake && g->handshake && g->best_rtt != INT64_MAX && h->samples >= 3);
     Chart c = {0};
     CHECK(chart_load(l, 1, 0, &c, error));
     for (int round = 0; round < 2; round++) {
-        CHECK(net_configure(h, 1, 0, &c, error));
+        CHECK(net_configure(h, 1, 0, &c));
         pump(h, g, 50);
         healthy(h, g);
-        CHECK(g->configured);
-        CHECK(net_verify(g, &c, error));
+        CHECK(g->revision == h->revision);
+        CHECK(net_verify(g, &c));
         pump(h, g, 50);
         CHECK(h->peer_verified);
         CHECK(net_ready(h, error));
@@ -580,22 +529,18 @@ static void network_tests(const Library *l) {
         healthy(h, g);
         CHECK(h->state == NET_PLAY && g->state == NET_PLAY);
         CHECK(llabs(h->target - g->target) < 50);
-        Stats a = {0}, b = {0};
-        for (int i = 0; i < c.count; i++) {
-            stats_apply(&a, PERFECT);
-            stats_apply(&b, round ? GREAT : PERFECT);
-        }
-        net_stats(h, &a, 33000);
-        net_stats(g, &b, 33000);
+        int a = 1000000, b = round ? 700000 : 1000000;
+        net_score(h, a);
+        net_score(g, b);
         pump(h, g, 30);
-        CHECK(h->peer_stats.finalized == c.count);
+        CHECK(h->peer_score == b && g->peer_score == a);
         Network *first = round ? g : h, *second = round ? h : g;
-        const Stats *first_score = round ? &b : &a, *second_score = round ? &a : &b;
-        CHECK(net_finish(first, first_score, error));
-        CHECK(!net_finish(first, first_score, error));
+        int first_score = round ? b : a, second_score = round ? a : b;
+        CHECK(net_finish(first, first_score));
+        CHECK(!net_finish(first, first_score));
         pump(h, g, 50);
         CHECK(first->state == NET_WAIT && second->state == NET_PLAY && second->peer_finished);
-        CHECK(net_finish(second, second_score, error));
+        CHECK(net_finish(second, second_score));
         if (round == 0) {
             int64_t deadline = nc_now() + 500;
             while (h->state == NET_WAIT && nc_now() < deadline) {
@@ -604,6 +549,7 @@ static void network_tests(const Library *l) {
                 Sleep(1);
             }
             CHECK(h->state == NET_DONE && g->state == NET_WAIT);
+            CHECK(h->peer_score == b);
             CHECK(net_rematch(h, error));
             net_poll(h);
             deadline = nc_now() + 500;
@@ -614,27 +560,27 @@ static void network_tests(const Library *l) {
         } else
             pump(h, g, 100);
         healthy(h, g);
-        CHECK(h->confirmed && g->confirmed && h->state == NET_DONE && g->state == NET_DONE);
-        CHECK(stats_result(&h->peer_stats, c.count).score == (round ? 700000 : 1000000));
+        CHECK(g->state == NET_DONE && g->peer_score == a);
         if (round == 0) {
             pump(h, g, 100);
             healthy(h, g);
             CHECK(h->state == NET_ROOM && g->state == NET_ROOM && !h->ready && !g->ready &&
-                  !h->configured && !g->configured);
-        }
+                  !h->revision && !g->revision);
+        } else
+            CHECK(h->state == NET_DONE && h->peer_score == b);
     }
     net_leave(h);
     pump(h, g, 20);
     net_leave(g);
-    CHECK(net_host(h, 0, "host", error));
-    CHECK(net_join(g, "127.0.0.1", h->port, "guest", error));
+    CHECK(net_open(h, NULL, 0, "host", error));
+    CHECK(net_open(g, "127.0.0.1", h->port, "guest", error));
     pump(h, g, 50);
     net_leave(g);
     net_poll(h);
-    CHECK(h->state == NET_ABORT && !h->confirmed);
+    CHECK(h->state == NET_ABORT);
     net_leave(h);
-    CHECK(!net_join(g, "not-an-ip", 9527, "guest", error));
-    CHECK(net_host(h, 0, "host", error));
+    CHECK(!net_open(g, "not-an-ip", 9527, "guest", error));
+    CHECK(net_open(h, NULL, 0, "host", error));
     SOCKET raw = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     struct sockaddr_in address = {0};
     address.sin_family = AF_INET;
@@ -642,10 +588,15 @@ static void network_tests(const Library *l) {
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     CHECK(connect(raw, (struct sockaddr *)&address, sizeof(address)) == 0);
     net_poll(h);
-    unsigned char oversized[] = {0, 2, 0, 0};
-    CHECK(send(raw, (const char *)oversized, 4, 0) == 4);
-    Sleep(5);
-    net_poll(h);
+    /* 不认识的消息分成两段。收到完整消息前，房主仍等待握手。 */
+    NetPacket invalid = {0};
+    const char *bytes = (const char *)&invalid;
+    int first_bytes = 19, rest = (int)sizeof(invalid) - first_bytes;
+    CHECK(send(raw, bytes, first_bytes, 0) == first_bytes);
+    pump(h, g, 50);
+    CHECK(h->state == NET_ROOM && !h->handshake && h->rxlen == (size_t)first_bytes);
+    CHECK(send(raw, bytes + first_bytes, rest, 0) == rest);
+    pump(h, g, 50);
     CHECK(h->state == NET_ABORT);
     closesocket(raw);
     net_leave(h);
@@ -660,7 +611,7 @@ static void network_tests(const Library *l) {
  * @brief 运行全部回归测试并报告断言总数。
  * 参数：argc 应为 2；argv[1] 指向真实 assets/songs。
  * 返回：全部测试成功返回 0；任意 CHECK 失败通过 exit(1) 退出。
- * 说明：在堆上分配曲库后依次执行计分、判定、资源、文件、音频、分帧和网络集成测试；最后释放曲库并输出总断言数。
+ * 说明：在堆上分配曲库后依次执行计分、判定、资源、文件、音频和网络集成测试；最后释放曲库并输出总断言数。
  */
 int main(int argc, char **argv) {
     CHECK(argc == 2);
@@ -671,7 +622,6 @@ int main(int argc, char **argv) {
     resource_tests(l, argv[1]);
     storage_tests(l);
     audio_tests(l);
-    frame_tests();
     network_tests(l);
     free(l);
     printf("ALL PASS: %d assertions\n", checks);

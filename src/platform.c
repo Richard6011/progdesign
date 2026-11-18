@@ -3,6 +3,7 @@
 #include "nc.h"
 #include <bcrypt.h>
 #include <shlobj.h>
+#include <wincrypt.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -93,12 +94,8 @@ bool nc_read(const char *path, char **out, size_t *size, size_t limit, char *err
     *out = NULL;
     if (!f)
         return nc_error(error, "无法读取文件：%s", path);
-    if (fseek(f, 0, SEEK_END)) {
-        fclose(f);
-        return nc_error(error, "文件定位失败");
-    }
-    long len = ftell(f);
-    if (len < 0 || (size_t)len > limit) {
+    int64_t len;
+    if (_fseeki64(f, 0, SEEK_END) || (len = _ftelli64(f)) < 0 || (size_t)len > limit) {
         fclose(f);
         return nc_error(error, "文件过大或长度无效：%s", path);
     }
@@ -206,68 +203,33 @@ void nc_data_dir(char out[NC_PATH]) {
     snprintf(out, NC_PATH, "%s/NoteCollisionC", root);
 }
 /**
- * @brief 使用 Windows BCrypt 计算内存或文件流的 SHA-256。
- * 参数：file 有效时从当前文件位置读取至 EOF；否则计算 data 的 len 字节；out 至少 65 字节。
- * 返回：计算成功返回 true，写入 64 位小写十六进制及零；任何系统失败返回 false。
- * 说明：有效文件句柄的所有权仍归调用者，不在这里关闭；内部算法/哈希句柄在统一出口释放。内存输入受 ULONG
- * 长度限制，文件采用 32KiB 分块避免整文件常驻内存。
- */
-static bool digest(const void *data, size_t len, HANDLE file, char out[65]) {
-    BCRYPT_ALG_HANDLE algorithm = NULL;
-    BCRYPT_HASH_HANDLE hash = NULL;
-    unsigned char bytes[32], buffer[32768];
-    bool ok = false;
-    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, NULL, 0) != 0)
-        goto end;
-    if (BCryptCreateHash(algorithm, &hash, NULL, 0, NULL, 0, 0) != 0)
-        goto end;
-    if (file != INVALID_HANDLE_VALUE) {
-        DWORD got;
-        for (;;) {
-            if (!ReadFile(file, buffer, sizeof(buffer), &got, NULL))
-                goto end;
-            if (!got)
-                break;
-            if (BCryptHashData(hash, buffer, got, 0) != 0)
-                goto end;
-        }
-    } else if (len > UINT32_MAX || BCryptHashData(hash, (PUCHAR)data, (ULONG)len, 0) != 0)
-        goto end;
-    if (BCryptFinishHash(hash, bytes, sizeof(bytes), 0) != 0)
-        goto end;
-    for (int i = 0; i < 32; i++)
-        sprintf(out + i * 2, "%02x", bytes[i]);
-    ok = true;
-end:
-    if (hash)
-        BCryptDestroyHash(hash);
-    if (algorithm)
-        BCryptCloseAlgorithmProvider(algorithm, 0);
-    return ok;
-}
-/**
  * @brief 计算一段内存的 SHA-256 文本摘要。
  * 参数：data 为可读内存，len 为字节数且不超过 UINT32_MAX；out 至少 65 字节。
  * 返回：成功返回 true 并填写摘要；失败返回 false，输出不能继续使用。
- * 说明：借用输入不做修改，不取得其所有权；内部委托 digest，当前用于账号摘要，不是慢速密码派生函数。
+ * 说明：使用 Windows 提供的一次性 SHA-256 接口，输出格式与既有账号和谱面摘要相同。
  */
 bool nc_hash(const void *data, size_t len, char out[65]) {
-    return digest(data, len, INVALID_HANDLE_VALUE, out);
+    unsigned char bytes[32];
+    DWORD size = sizeof(bytes);
+    if (len > UINT32_MAX || !CryptHashCertificate2(BCRYPT_SHA256_ALGORITHM, 0, NULL, data,
+                                                  (DWORD)len, bytes, &size))
+        return false;
+    for (int i = 0; i < 32; i++)
+        sprintf(out + i * 2, "%02x", bytes[i]);
+    return true;
 }
 /**
- * @brief 以流式方式计算文件内容的 SHA-256。
+ * @brief 计算资源文件的 SHA-256。
  * 参数：path 为 UTF-8 文件路径；out 至少 65 字节；error 可空。
  * 返回：成功返回 true；打开、读取或哈希失败返回 false 并写原因。
- * 说明：以共享只读方式打开文件，交给 digest 从头读至尾后关闭句柄；摘要针对原始字节，格式化 JSON
- * 等字节变化也会改变联机资源指纹。
+ * 说明：读入原始字节后与内存摘要共用 nc_hash。谱面与音频计算完即释放临时缓冲，文件格式无需改变。
  */
 bool nc_hash_file(const char *path, char out[65], char *error) {
-    wchar_t w[NC_PATH];
-    wide(path, w, NC_PATH);
-    HANDLE f = CreateFileW(w, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-    if (f == INVALID_HANDLE_VALUE)
-        return nc_error(error, "无法读取资源：%s", path);
-    bool ok = digest(NULL, 0, f, out);
-    CloseHandle(f);
+    char *data;
+    size_t size;
+    if (!nc_read(path, &data, &size, UINT32_MAX, error))
+        return false;
+    bool ok = nc_hash(data, size, out);
+    free(data);
     return ok || nc_error(error, "SHA-256 计算失败");
 }
