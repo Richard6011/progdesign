@@ -53,7 +53,7 @@ class Canvas final : public QWidget {
   public:
     QImage frame;
 
-    // 使用固定逻辑尺寸沿用已有 C 页面布局；QImage 充当原 EasyX 双缓冲画布。
+    // 使用固定逻辑尺寸沿用已有 C 页面布局；QImage 用作离屏画布。
     Canvas(int w, int h) : frame(w, h, QImage::Format_RGB32) {
         frame.fill(Qt::black);
         setFixedSize(w, h);

@@ -7,8 +7,5 @@
   License texts supplied with the release are in licenses/Qt.
 - cJSON 1.7.19, https://github.com/DaveGamble/cJSON/tree/v1.7.19 .
   MIT license, retained in third_party/cjson/LICENSE and copied to the release licenses directory.
-- EasyX Graphics Library 26.10.25 is retained under third_party/easyx as upstream history.
-  The current Qt build does not compile or link EasyX.
-  Original download: https://easyx.cn/download/EasyX_26.10.25.exe .
 - The supplied songs, WAV files and charts come from the original NoteCollision project.
   Their provenance is described in each song's README.md.

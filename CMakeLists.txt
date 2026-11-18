@@ -20,9 +20,6 @@ add_executable(NoteCollision WIN32 src/main.c src/ui.c src/qt_bridge.cpp)
 target_compile_definitions(NoteCollision PRIVATE UNICODE _UNICODE)
 target_compile_options(NoteCollision PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
 target_link_libraries(NoteCollision PRIVATE nc_core Qt6::Widgets)
-# EasyX 迷宫示例独立构建，避免每次编译音游都顺带生成示例程序。
-add_subdirectory(examples/easyx-maze EXCLUDE_FROM_ALL)
-# Qt 官方 SDK 使用动态库，不能沿用 EasyX 的全静态链接；打包时由 windeployqt 收集 DLL。
 add_custom_command(TARGET NoteCollision POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:NoteCollision>/assets")
 include(CTest)
 if(BUILD_TESTING)
