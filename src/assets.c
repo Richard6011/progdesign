@@ -1,5 +1,4 @@
 #include "json.h"
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,109 +42,29 @@ static int note_order(const void *a, const void *b) {
     return x->id - y->id;
 }
 /**
- * @brief 校验谱面内部约束，并按游戏处理顺序原地排序。
- * 参数：c 提供已分配的 notes、count、duration 和 approach；err 可为空。
- * 返回：全部约束满足时返回 true；首次发现错误时返回 false 并写入原因。
- * 说明：限制 1—20000 个音符、最多一小时、100—10000ms 接近时间；检查
- * ID、轨道、尾部、同轨占用和分组。音符头部需为最大判定窗口及偏移预留 421ms；失败前可能已改变数组排序。
+ * @brief 原地排序音符并检查每条轨道上的占用时段。
+ * 参数：c 的音符已完成字段和取值校验；err 可为空。
+ * 返回：各轨占用时段均可演奏时返回 true，遇到同刻音符或长按重叠返回 false。
+ * 说明：普通音符只占用头部时刻，长按占用到尾部。排序后每轨只需记住上一枚音符占用到何时。
  */
-bool chart_validate(Chart *c, char *err) {
-    if (c->count < 1 || c->count > NC_NOTES || c->duration < 1 || c->duration > 3600000 ||
-        c->approach < 100 || c->approach > 10000)
-        return nc_error(err, "谱面数量、时长或接近时间非法");
+static bool chart_sort(Chart *c, char *err) {
     qsort(c->notes, (size_t)c->count, sizeof(Note), note_order);
+    int lane_end[4] = {-1, -1, -1, -1};
     for (int i = 0; i < c->count; i++) {
-        Note *n = &c->notes[i];
-        if (n->id <= 0 || n->lane < 0 || n->lane > 3 || n->time < 0 ||
-            n->time > c->duration - 421 || n->end > c->duration ||
-            (n->type == HOLD ? n->end <= n->time : n->end != n->time))
-            return nc_error(err, "音符 %d 的轨道、时刻或长度无效", n->id);
-        for (int j = 0; j < i; j++) {
-            Note *p = &c->notes[j];
-            if (p->id == n->id)
-                return nc_error(err, "音符 id 重复");
-            if (p->lane == n->lane &&
-                (p->time == n->time || (p->type == HOLD && p->end >= n->time)))
-                return nc_error(err, "同轨音符重叠");
-        }
-        if (n->type == CHAIN && n->chain < 0)
-            return nc_error(err, "连锁节点缺少 chainId");
-        if (n->chain >= 0) {
-            int peers = 0;
-            for (int j = 0; j < c->count; j++)
-                if (c->notes[j].chain == n->chain) {
-                    if (c->notes[j].type != CHAIN)
-                        return nc_error(err, "连锁分组含非连锁音符");
-                    peers++;
-                }
-            if (peers < 2)
-                return nc_error(err, "连锁分组至少需要两个节点");
-        }
-        if (n->chord >= 0) {
-            int peers = 0;
-            for (int j = 0; j < c->count; j++)
-                if (c->notes[j].chord == n->chord) {
-                    if (c->notes[j].time != n->time)
-                        return nc_error(err, "同时按键分组时刻不一致");
-                    peers++;
-                }
-            if (peers < 2)
-                return nc_error(err, "同时按键分组至少需要两个音符");
-        }
+        const Note *n = &c->notes[i];
+        if (n->time <= lane_end[n->lane])
+            return nc_error(err, "同轨音符重叠");
+        lane_end[n->lane] = n->end;
     }
     return true;
-}
-/**
- * @brief 从四个字节读取 WAV 使用的小端无符号整数。
- * 参数：p 必须指向至少四个可读字节，读取前由调用方完成边界检查。
- * 返回：返回四个字节合成的 uint32_t。
- * 说明：逐字节移位后按位或，不依赖 CPU 字节序，也不要求输入指针按四字节对齐。
- */
-static uint32_t le32(const unsigned char *p) {
-    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
-}
-/**
- * @brief 核对 PCM WAV 数据块及其实际播放时长。
- * 参数：path 为 UTF-8 文件路径；duration 为谱面声明的毫秒时长；error 可为空。
- * 返回：头部、块边界和时长符合要求返回 true；读取或校验失败返回 false。
- * 说明：最多读取 128MiB，检查 RIFF/WAVE、PCM fmt 和 data，按块长度及奇数字节填充跳转。使用
- * data 字节数/字节率计算时长，允许 1ms 误差；所有出口释放文件缓冲区。
- */
-static bool wav_validate(const char *path, int duration, char *error) {
-    char *bytes;
-    size_t size;
-    if (!nc_read(path, &bytes, &size, 128 * 1024 * 1024, error))
-        return false;
-    unsigned char *p = (unsigned char *)bytes;
-    uint32_t rate = 0, data = 0;
-    bool ok = false;
-    if (size < 12 || memcmp(p, "RIFF", 4) || memcmp(p + 8, "WAVE", 4))
-        goto end;
-    for (size_t pos = 12; pos + 8 <= size;) {
-        uint32_t n = le32(p + pos + 4);
-        if (n > size - pos - 8)
-            goto end;
-        if (!memcmp(p + pos, "fmt ", 4) && n >= 16) {
-            if (p[pos + 8] != 1 || p[pos + 9] != 0)
-                goto end; /* PCM only, as shipped */
-            rate = le32(p + pos + 16);
-        }
-        if (!memcmp(p + pos, "data", 4))
-            data = n;
-        pos += 8 + (size_t)n + (n & 1);
-    }
-    ok = rate && data && llabs((int64_t)data * 1000 / rate - duration) <= 1;
-end:
-    free(bytes);
-    return ok || nc_error(error, "WAV 格式损坏或时长与谱面不一致：%s", path);
 }
 /**
  * @brief 从选定曲目和难度的 JSON 载入一份完整谱面。
  * 参数：l 为有效曲库；song 为歌曲下标；diff 为 0/1/2；out 必须为清零初始化或有效旧谱面；error
  * 可为空。
  * 返回：成功返回 true 并替换 out；失败返回 false，out 保持原内容。
- * 说明：先在局部 Chart 中解析和分配，检查身份、音符、WAV 时长，再计算谱面与音频的文件
- * SHA-256。仅全部成功后释放旧 out 并转移 notes 所有权，失败释放临时资源。
+ * 说明：先在局部 Chart 中解析和分配，检查身份及音符的时刻、轨道，再计算谱面与音频的文件
+ * SHA-256。WAV 时长由音频模块在打开设备时检查。仅全部成功后释放旧 out 并转移 notes 所有权，失败释放临时资源。
  */
 bool chart_load(const Library *l, int song, int diff, Chart *out, char *error) {
     if (song < 0 || song >= l->count || diff < 0 || diff > 2)
@@ -178,13 +97,14 @@ bool chart_load(const Library *l, int song, int diff, Chart *out, char *error) {
         nc_error(error, "内存不足");
         goto fail;
     }
-    for (int i = 0; i < c.count; i++) {
-        cJSON *v = cJSON_GetArrayItem(notes, i);
-        Note *n = &c.notes[i];
+    const cJSON *v;
+    int i = 0;
+    cJSON_ArrayForEach(v, notes) {
+        Note *n = &c.notes[i++];
         char type[16];
-        n->chain = n->chord = -1;
+        /* 音符头部为最大判定窗口及校准偏移预留 421ms。 */
         if (!json_int(v, "id", 1, 100000000, &n->id) || !json_int(v, "lane", 0, 3, &n->lane) ||
-            !json_int(v, "timeMs", 0, 3600000, &n->time) ||
+            !json_int(v, "timeMs", 0, c.duration - 421, &n->time) ||
             !json_str(v, "type", type, sizeof(type))) {
             nc_error(error, "音符字段缺失或类型错误");
             goto fail;
@@ -200,21 +120,21 @@ bool chart_load(const Library *l, int song, int diff, Chart *out, char *error) {
             goto fail;
         }
         n->end = n->time;
-        if ((n->type == HOLD || cJSON_HasObjectItem(v, "endMs")) &&
-            !json_int(v, "endMs", 0, 3600000, &n->end)) {
+        if (((n->type == HOLD || cJSON_HasObjectItem(v, "endMs")) &&
+             !json_int(v, "endMs", 0, c.duration, &n->end)) ||
+            (n->type == HOLD ? n->end <= n->time : n->end != n->time)) {
             nc_error(error, "音符 endMs 无效");
             goto fail;
         }
-        if ((cJSON_HasObjectItem(v, "chainId") &&
-             !json_int(v, "chainId", -1, 100000000, &n->chain)) ||
-            (cJSON_HasObjectItem(v, "chordId") &&
-             !json_int(v, "chordId", -1, 100000000, &n->chord))) {
-            nc_error(error, "音符分组无效");
+        int chord = -1;
+        if (cJSON_HasObjectItem(v, "chordId") && !json_int(v, "chordId", -1, 100000000, &chord)) {
+            nc_error(error, "音符 chordId 无效");
             goto fail;
         }
+        n->chord = chord >= 0;
     }
-    if (!chart_validate(&c, error) || !nc_hash_file(path, c.hash, error) ||
-        !path_join(l, s->audio, path, error) || !wav_validate(path, c.duration, error) ||
+    if (!chart_sort(&c, error) || !nc_hash_file(path, c.hash, error) ||
+        !path_join(l, s->audio, path, error) ||
         !nc_hash_file(path, c.audio_hash, error))
         goto fail;
     cJSON_Delete(o);
@@ -227,11 +147,11 @@ fail:
     return false;
 }
 /**
- * @brief 载入歌曲索引，并预检每首歌曲的三个难度。
+ * @brief 载入歌曲索引，记录各难度的谱面路径。
  * 参数：l 为输出曲库；root 是独立输入字符串，不能指向 l 内部待清空的字段；error 可为空。
- * 返回：索引及所有可选谱面均有效返回 true，否则返回 false。
- * 说明：先清空 l，限制歌曲数量为 NC_SONGS 并拒绝重复歌曲 ID；逐档调用 chart_load
- * 后立即释放临时谱面。失败时 l 可能已有部分字段，调用方不能将其视为有效曲库继续使用。
+ * 返回：索引有效返回 true，否则返回 false。
+ * 说明：先清空 l，限制歌曲数量为 NC_SONGS 并拒绝重复歌曲 ID。选定曲目和难度时再调用 chart_load。
+ * 失败时 l 可能已有部分字段，调用方不能将其视为有效曲库继续使用。
  */
 bool library_load(Library *l, const char *root, char *error) {
     memset(l, 0, sizeof(*l));
@@ -252,7 +172,6 @@ bool library_load(Library *l, const char *root, char *error) {
         Song *s = &l->songs[i];
         ok = json_str(v, "id", s->id, sizeof(s->id)) &&
              json_str(v, "title", s->title, sizeof(s->title)) &&
-             json_str(v, "artist", s->artist, sizeof(s->artist)) &&
              json_str(v, "audioPath", s->audio, sizeof(s->audio)) &&
              path_join(l, s->audio, path, error);
         cJSON *charts = cJSON_GetObjectItemCaseSensitive(v, "charts");
@@ -267,13 +186,5 @@ bool library_load(Library *l, const char *root, char *error) {
     if (!ok)
         return nc_error(error, "曲目索引版本、字段或路径无效");
     l->count = count;
-    /* Validate every selectable chart at startup rather than fail half way through a room. */
-    for (int i = 0; i < count; i++)
-        for (int d = 0; d < 3; d++) {
-            Chart c = {0};
-            if (!chart_load(l, i, d, &c, error))
-                return false;
-            chart_free(&c);
-        }
     return true;
 }

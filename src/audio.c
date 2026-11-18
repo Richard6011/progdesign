@@ -36,9 +36,9 @@ void audio_close(void) {
  * @brief 预加载歌曲，为随后的计划起播准备音频设备。
  * 参数：path 为 UTF-8 路径；volume 为调用者保证的 0—100 音量；duration
  * 为谱面毫秒时长；error 可为空。
- * 返回：设备打开且报告时长与谱面相差不超过 100ms 时返回 true，否则返回 false。
+ * 返回：设备打开且报告时长在谱面时长至谱面时长加 100ms 之间时返回 true，否则返回 false。
  * 说明：先关闭旧设备，用 mpegvideo MCI 打开、设置毫秒格式并核对时长，再设置音量，不立即播放。设置时间格式或时长
- * 检查失败时关闭本次设备；音量命令本身为尽力设置，不决定本函数返回值。
+ * 检查失败时关闭本次设备；音频至少覆盖最后一个音符可能的结算时刻。音量命令本身为尽力设置，不决定本函数返回值。
  */
 bool audio_open(const char *path, int volume, int duration, char *error) {
     audio_close();
@@ -53,25 +53,15 @@ bool audio_open(const char *path, int volume, int duration, char *error) {
         return false;
     }
     wchar_t value[64];
-    MCIERROR rc = mciSendStringW(L"status nc_music length", value, 64, NULL);
-    if (rc || abs(_wtoi(value) - duration) > 100) {
+    int length = mciSendStringW(L"status nc_music length", value, 64, NULL) ? -1 : _wtoi(value);
+    if (length < duration || length > duration + 100) {
         audio_close();
         return nc_error(error, "音频实际长度与谱面不一致");
     }
-    audio_volume(volume);
+    /* MCI 使用 0—1000 的音量范围；命令失败时仍可播放。 */
+    swprintf(cmd, NC_PATH + 64, L"setaudio nc_music volume to %d", volume * 10);
+    mciSendStringW(cmd, NULL, 0, NULL);
     return true;
-}
-/**
- * @brief 设置已打开音乐设备的音量。
- * 参数：v 应由调用方限制为 0—100；无设备时不会发送命令。
- * 返回：无返回值；MCI 音量设置失败不会通过本接口报告。
- * 说明：MCI 的音量范围是 0—1000，因此把百分比乘十；不修改持久化设置结构，只影响当前设备。
- */
-void audio_volume(int v) {
-    wchar_t cmd[80];
-    swprintf(cmd, 80, L"setaudio nc_music volume to %d", v * 10);
-    if (opened)
-        mciSendStringW(cmd, NULL, 0, NULL);
 }
 /**
  * @brief 从音乐零毫秒处开始播放。

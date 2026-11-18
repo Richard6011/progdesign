@@ -39,7 +39,6 @@ typedef enum {
     ACT_RESUME,
     ACT_RESTART,
     ACT_ABORT,
-    ACT_SAVE,
     ACT_REMATCH,
     ACT_LOGOUT,
     ACT_RANK_PREV,
@@ -59,9 +58,8 @@ typedef struct {
     Engine engine;
     Page page;
     int song, diff, rank_page, focus;
-    bool registering, lan_mode, saved, submitted, started;
-    bool media_ready, countdown, settings_writable, run_active;
-    int loaded_revision;
+    bool registering, lan_mode, saved;
+    bool media_ready, countdown;
     int64_t target, last_audio_change;
     int last_audio_position;
     char name[128], password[256], ip[64], port[8], data[NC_PATH], message[NC_ERROR], session[65],

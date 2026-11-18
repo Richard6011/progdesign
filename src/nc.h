@@ -9,14 +9,15 @@
 #define NC_PATH 1024
 #define NC_ERROR 512
 #define NC_RULES 2
-#define NC_PROTOCOL 2
+#define NC_PROTOCOL 3
 typedef enum { TAP, HOLD, CHAIN } NoteType;
 typedef enum { PENDING, HOLDING, HIT, MISSED } NoteState;
 typedef enum { PERFECT, GREAT, GOOD, MISS } Judgement;
-typedef enum { IDLE, PLAYING, PAUSED, RESUME_READY, FINISHED, ABORTED } GameState;
+typedef enum { IDLE, PLAYING, PAUSED, RESUME_READY, FINISHED } GameState;
 typedef struct {
-    int id, lane, time, end, chain, chord;
+    int id, lane, time, end;
     NoteType type;
+    bool chord; /* 是否属于同时按键分组，用于绘制标记。 */
 } Note;
 typedef struct {
     NoteState state;
@@ -28,7 +29,7 @@ typedef struct {
     Note *notes;
 } Chart;
 typedef struct {
-    char id[128], title[256], artist[256], audio[NC_PATH], charts[3][NC_PATH];
+    char id[128], title[256], audio[NC_PATH], charts[3][NC_PATH];
 } Song;
 typedef struct {
     Song songs[NC_SONGS];
@@ -53,10 +54,10 @@ typedef struct {
     bool down[4];
     int now, offset;
     Judgement last;
-    int last_time, events;
+    int last_time;
 } Engine;
 typedef struct {
-    int music, effect, offset;
+    int music, offset;
 } Settings;
 typedef struct {
     char session[65], match[65], name[128], opponent[128], chart[128], hash[65], difficulty[16],
@@ -150,8 +151,8 @@ bool nc_hash(const void *data, size_t len, char out[65]);
  */
 void chart_free(Chart *chart);
 /**
- * @brief 载入歌曲索引，并预检每首歌曲的三个难度。
- * 返回：索引及所有可选谱面均有效返回 true，否则返回 false。
+ * @brief 载入歌曲索引，记录各难度的谱面路径。
+ * 返回：索引有效返回 true，否则返回 false。
  * 详见：assets.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 bool library_load(Library *lib, const char *root, char *error);
@@ -161,12 +162,6 @@ bool library_load(Library *lib, const char *root, char *error);
  * 详见：assets.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 bool chart_load(const Library *lib, int song, int difficulty, Chart *chart, char *error);
-/**
- * @brief 校验谱面内部约束，并按游戏处理顺序原地排序。
- * 返回：全部约束满足时返回 true；首次发现错误时返回 false 并写入原因。
- * 详见：assets.c 的同名函数定义（含参数、步骤及边界说明）。
- */
-bool chart_validate(Chart *chart, char *error);
 /**
  * @brief 为借用的谱面创建本局运行状态。
  * 返回：成功分配 Runtime 返回 true，并置 PLAYING；前置参数非法或分配失败返回 false。
@@ -223,7 +218,7 @@ void stats_apply(Stats *stats, Judgement judgement);
 bool stats_valid(const Stats *stats, int count, bool complete);
 /**
  * @brief 根据固定音符总数计算标准化成绩。
- * 返回：返回 Result；统计非法时为零分、D 级且不完整。
+ * 返回：返回 Result；没有可用谱面时为零分、D 级且不完整。
  * 详见：engine.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 Result stats_result(const Stats *stats, int count);
@@ -240,12 +235,6 @@ bool account_action(const char *root, const char *name, const char *password, bo
  * 详见：storage.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 bool settings_load(const char *root, Settings *settings, char *error);
-/**
- * @brief 将合法设置原子写入用户目录。
- * 返回：范围检查、建目录与 JSON 保存全部成功返回 true，否则返回 false。
- * 详见：storage.c 的同名函数定义（含参数、步骤及边界说明）。
- */
-bool settings_save(const char *root, const Settings *settings, char *error);
 /**
  * @brief 把本地完整成绩文件装入内存仓库。
  * 返回：不存在文件时以空可写仓库返回 true；合法文件返回 true；读入或验证失败返回 false。
@@ -273,7 +262,7 @@ int store_ranking(const Store *store, const Chart *chart, int mode, const Record
                   int capacity);
 /**
  * @brief 预加载歌曲，为随后的计划起播准备音频设备。
- * 返回：设备打开且报告时长与谱面相差不超过 100ms 时返回 true，否则返回 false。
+ * 返回：设备打开且报告时长在谱面时长至谱面时长加 100ms 之间时返回 true，否则返回 false。
  * 详见：audio.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 bool audio_open(const char *path, int volume, int duration, char *error);
@@ -307,10 +296,4 @@ int audio_position(void);
  * 详见：audio.c 的同名函数定义（含参数、步骤及边界说明）。
  */
 void audio_close(void);
-/**
- * @brief 设置已打开音乐设备的音量。
- * 返回：无返回值；MCI 音量设置失败不会通过本接口报告。
- * 详见：audio.c 的同名函数定义（含参数、步骤及边界说明）。
- */
-void audio_volume(int volume);
 #endif

@@ -49,19 +49,19 @@ bool stats_valid(const Stats *s, int n, bool complete) {
 }
 /**
  * @brief 根据固定音符总数计算标准化成绩。
- * 参数：s 为统计；n 为谱面全部判定单元数量，不能使用当前已判定数量代替。
- * 返回：返回 Result；统计非法时为零分、D 级且不完整。
+ * 参数：s 为引擎生成或已经校验的统计；n 为谱面全部判定单元数量，不能使用当前已判定数量代替。
+ * 返回：返回 Result；没有可用谱面时为零分、D 级且不完整。
  * 说明：分数使用整数除法归一化到百万分，准确率按相同权重计算。S 要求准确率至少 95% 且最大连击至少 80%；A/B/C
  * 为 90/80/70%。FC/AP 仅在完整局中成立。
  */
 Result stats_result(const Stats *s, int n) {
     Result r = {0};
     r.grade = 'D';
-    if (!stats_valid(s, n, false))
+    if (n <= 0)
         return r;
     r.score = (int)(1000000LL * s->units / (1000LL * n));
     r.accuracy = (double)s->units / (1000.0 * n);
-    r.complete = stats_valid(s, n, true);
+    r.complete = s->finalized == n;
     r.fc = r.complete && !s->miss;
     r.ap = r.complete && s->perfect == n;
     if (s->units * 100 >= 95000LL * n && 100LL * s->max_combo >= 80LL * n)
@@ -87,20 +87,17 @@ static Judgement classify(int delta) {
     return d <= 90 ? PERFECT : d <= 150 ? GREAT : d <= 220 ? GOOD : MISS;
 }
 /**
- * @brief 为一个音符执行最终结算，并阻止重复记分。
- * 参数：e 为运行引擎；i 必须是有效音符下标；j 为最终判定；time 为该判定的有效音乐时刻。
- * 返回：无返回值；更新 Runtime、Stats、最近判定提示与事件数量。
- * 说明：已为 HIT/MISSED 的音符直接忽略。长按成功也仅在尾部调用一次；完成数量达到谱面总数后将引擎置
+ * @brief 为一个尚未结算的音符执行最终结算。
+ * 参数：e 为运行引擎；i 指向 PENDING 或 HOLDING 的音符；j 为最终判定；time 为该判定的有效音乐时刻。
+ * 返回：无返回值；更新 Runtime、Stats 和最近判定提示。
+ * 说明：调用方从待判或保持中的音符中选择，避免重复记分。长按成功也仅在尾部调用一次；完成数量达到谱面总数后将引擎置
  * FINISHED，不负责停止音乐或保存记录。
  */
 static void finish_note(Engine *e, int i, Judgement j, int time) {
-    if (e->runtime[i].state == HIT || e->runtime[i].state == MISSED)
-        return;
     e->runtime[i].state = j == MISS ? MISSED : HIT;
     stats_apply(&e->stats, j);
     e->last = j;
     e->last_time = time;
-    e->events++;
     if (e->stats.finalized == e->chart->count)
         e->state = FINISHED;
 }
@@ -116,7 +113,7 @@ void engine_free(Engine *e) {
 }
 /**
  * @brief 为借用的谱面创建本局运行状态。
- * 参数：e 必须已清零或有效初始化；c 为已由资源模块校验的谱面；offset 为 -200 至 +200ms 输入校准。
+ * 参数：e 必须已清零或有效初始化；c 为已校验并按头部时刻、轨道、ID 排序的谱面；offset 为 -200 至 +200ms 输入校准。
  * 返回：成功分配 Runtime 返回 true，并置 PLAYING；前置参数非法或分配失败返回 false。
  * 说明：会释放上一局运行数组、清空统计和按键状态，但不复制谱面。c 及 notes
  * 在整局期间必须保持有效且不能被修改；这里只做必要的数量与偏移检查，不重复完整谱面校验。
@@ -139,7 +136,7 @@ bool engine_start(Engine *e, const Chart *c, int offset) {
  * @brief 推进音乐时间，并结算漏击头部与已到尾的长按。
  * 参数：e 为引擎；time 为非负、单调前进的音乐位置，单位毫秒。
  * 返回：无返回值；非 PLAYING 或时间倒退时直接忽略。
- * 说明：每次寻找有效结算时间最早的待处理事件，先处理实际先发生的事件，再按头部时刻、轨道、ID 破同序。漏击截止为
+ * 说明：每次寻找有效结算时间最早的待处理事件，到期时间相同则按谱面顺序结算。漏击截止为
  * timeMs+221-offset；按住的长按到尾保留头部等级，确保慢帧与快帧产生相同连击。
  */
 void engine_tick(Engine *e, int time) {
@@ -149,19 +146,16 @@ void engine_tick(Engine *e, int time) {
     for (;;) {
         int best = -1, due = INT_MAX;
         for (int i = 0; i < e->chart->count; i++) {
-            Note *n = &e->chart->notes[i];
-            Runtime *r = &e->runtime[i];
-            int t = INT_MAX;
+            const Note *n = &e->chart->notes[i];
+            const Runtime *r = &e->runtime[i];
+            int t;
             if (r->state == HOLDING)
                 t = n->end;
             else if (r->state == PENDING)
                 t = n->time + 221 - e->offset;
-            if (t <= time &&
-                (t < due || (t == due && (best < 0 || n->time < e->chart->notes[best].time ||
-                                          (n->time == e->chart->notes[best].time &&
-                                           (n->lane < e->chart->notes[best].lane ||
-                                            (n->lane == e->chart->notes[best].lane &&
-                                             n->id < e->chart->notes[best].id))))))) {
+            else
+                continue;
+            if (t <= time && t < due) {
                 best = i;
                 due = t;
             }
@@ -178,7 +172,7 @@ void engine_tick(Engine *e, int time) {
  * @brief 处理一条轨道从松开到按下的输入。
  * 参数：e 为引擎；lane 为 0—3；time 为音乐位置。
  * 返回：命中候选音符或登记恢复阶段按键时返回 true；无候选、重复按住、非法轨道/状态/倒退时返回 false。
- * 说明：先补算该时刻前的到期事件，再用 time+offset 寻找窗口内最早音符。单点/连锁立即结算，长按仅进入
+ * 说明：先补算该时刻前的到期事件，再按谱面顺序用 time+offset 寻找窗口内第一个待判音符。单点/连锁立即结算，长按仅进入
  * HOLDING 并记录头部等级。RESUME_READY 中只记按住状态，实际是否继续由 engine_resume 判断。
  */
 bool engine_press(Engine *e, int lane, int time) {
@@ -194,25 +188,21 @@ bool engine_press(Engine *e, int lane, int time) {
     if (e->state != PLAYING || e->down[lane])
         return false;
     e->down[lane] = true;
-    int best = -1;
     for (int i = 0; i < e->chart->count; i++) {
-        Note *n = &e->chart->notes[i];
-        if (n->lane != lane || e->runtime[i].state != PENDING ||
-            classify(time + e->offset - n->time) == MISS)
+        const Note *n = &e->chart->notes[i];
+        if (n->lane != lane || e->runtime[i].state != PENDING)
             continue;
-        if (best < 0 || n->time < e->chart->notes[best].time ||
-            (n->time == e->chart->notes[best].time && n->id < e->chart->notes[best].id))
-            best = i;
+        Judgement j = classify(time + e->offset - n->time);
+        if (j == MISS)
+            continue;
+        if (n->type == HOLD) {
+            e->runtime[i].state = HOLDING;
+            e->runtime[i].head = j;
+        } else
+            finish_note(e, i, j, time);
+        return true;
     }
-    if (best < 0)
-        return false;
-    Judgement j = classify(time + e->offset - e->chart->notes[best].time);
-    if (e->chart->notes[best].type == HOLD) {
-        e->runtime[best].state = HOLDING;
-        e->runtime[best].head = j;
-    } else
-        finish_note(e, best, j, time);
-    return true;
+    return false;
 }
 /**
  * @brief 处理轨道松开，并将提前放开的活动长按记为 Miss。

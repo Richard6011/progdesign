@@ -188,7 +188,7 @@ static void selection(App *a, int x, int y, bool editable) {
  * @brief 绘制单人准备演奏页。
  * 参数：a 含当前选曲和已载入谱面。
  * 返回：无返回值；仅在 chart.count>0 时启用开始按钮。
- * 说明：调用 selection 绘制公共选曲区；仅发 ACT_PLAY，真正重载音频和倒计时由 solo_start 完成。
+ * 说明：调用 selection 绘制公共选曲区；仅发 ACT_PLAY，打开音频和安排倒计时由 solo_start 完成。
  */
 static void select_page(App *a) {
     heading(a, "选曲");
@@ -305,7 +305,7 @@ static void game(App *a) {
             if (y < top || y > bottom + 20)
                 continue;
             gfx_rect(x, y - 7, w, 15, n->type == CHAIN ? 0xb39a5a : lanes[n->lane], 6);
-            if (n->chord >= 0)
+            if (n->chord)
                 gfx_rect(x + w / 2 - 12, y - 3, 24, 5, TEXT, 2);
         }
     }
@@ -349,9 +349,9 @@ static void game(App *a) {
 /**
  * @brief 绘制本局统计、保存状态与联机胜负。
  * 参数：a 提供最终引擎统计及网络确认状态。
- * 返回：无返回值；按模式和确认状态登记重演、再来一局或重试保存。
- * 说明：分数/评级统一由 stats_result 计算；联机只有 confirmed
- * 才显示正式胜负和开放保存，同分为平局，客人等待房主再来一局。不在每帧绘制中再次保存。
+ * 返回：无返回值；按模式和确认状态登记重演或再来一局。
+ * 说明：分数/评级统一由 stats_result 计算；联机确认后显示正式胜负，同分为平局，客人等待房主再来一局。
+ * 保存由完赛流程触发，绘制只显示保存结果，因此重复绘制不会触发写盘。
  */
 static void result(App *a) {
     heading(a, "成绩");
@@ -398,8 +398,6 @@ static void result(App *a) {
            a->lan_mode ? (a->net.host ? "返回房间" : "等待房主") : "重新演奏",
            a->lan_mode ? ACT_REMATCH : ACT_RESTART, 0,
            !a->lan_mode || (a->net.confirmed && a->net.host), true);
-    button(a, 414, 585, 350, 58, "重试保存", ACT_SAVE, 0,
-           !a->saved && (!a->lan_mode || a->net.confirmed), false);
 }
 /**
  * @brief 绘制单人模式下各账号最佳成绩。

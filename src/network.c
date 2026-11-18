@@ -112,13 +112,11 @@ static void flush(Network *n) {
  * 参数：n 为会话；reason 为 UTF-8 中止原因。
  * 返回：无返回值，最终状态为 NET_ABORT 且不再确认成绩。
  * 说明：有连接时先排入 abort 并尝试一次 flush，再调用 failed
- * 关闭；不能保证对方一定收到说明，对方仍可通过断线检测中止。
+ * 关闭；原因保留在本机，对方处理通用中止通知或检测断线。
  */
 void net_abort(Network *n, const char *reason) {
     if (n->socket != INVALID_NET) {
-        cJSON *p = cJSON_CreateObject();
-        cJSON_AddStringToObject(p, "reason", reason);
-        queue(n, "abort", p);
+        queue(n, "abort", NULL);
         flush(n);
     }
     failed(n, reason);
@@ -151,8 +149,8 @@ static void attach(Network *n, SOCKET s) {
     cJSON *p = cJSON_CreateObject();
     cJSON_AddStringToObject(p, "name", n->name);
     cJSON_AddNumberToObject(p, "role", n->host ? 1 : 0);
-    queue(n, "hello", p);
-    status(n, "已连接，正在校验资源与时钟");
+    if (queue(n, "hello", p))
+        status(n, "已连接，正在校验资源与时钟");
 }
 /**
  * @brief 创建只接纳一位客人的 IPv4 TCP 房间。
@@ -270,7 +268,7 @@ int net_frame(const unsigned char *d, size_t len, cJSON **out, size_t *used) {
  * 参数：n 为会话；type 为消息名；p 为负载对象或 NULL；传入后 p 所有权即转交本函数。
  * 返回：序列化并入队成功返回 true；分配或队列上限失败返回 false。
  * 说明：添加协议版本、递增 seq、当前 match 和 payload，写入大端长度前缀；NULL
- * 负载转为空对象。超过正文/总队列上限会 failed 中止；仅入队，不保证字节已发出或对端已确认。
+ * 负载转为空对象。序列化失败或超过总队列上限时中止连接；入队后仍需由 flush 实际发送。
  */
 static bool queue(Network *n, const char *type, cJSON *p) {
     if (!p)
@@ -283,8 +281,10 @@ static bool queue(Network *n, const char *type, cJSON *p) {
     cJSON_AddItemToObject(o, "payload", p);
     char *text = cJSON_PrintUnformatted(o);
     cJSON_Delete(o);
-    if (!text)
+    if (!text) {
+        failed(n, "无法生成网络消息");
         return false;
+    }
     size_t size = strlen(text);
     if (size > 65536 || n->txlen + size + 4 > sizeof(n->tx)) {
         cJSON_free(text);
@@ -323,7 +323,6 @@ bool net_configure(Network *n, int song, int difficulty, const Chart *c, char *e
     nc_copy(n->audio_hash, sizeof(n->audio_hash), c->audio_hash);
     nc_copy(n->chart_id, sizeof(n->chart_id), c->id);
     cJSON *p = cJSON_CreateObject();
-    cJSON_AddStringToObject(p, "songId", c->song);
     cJSON_AddNumberToObject(p, "song", song);
     cJSON_AddNumberToObject(p, "difficulty", difficulty);
     cJSON_AddNumberToObject(p, "revision", n->revision);
@@ -332,7 +331,7 @@ bool net_configure(Network *n, int song, int difficulty, const Chart *c, char *e
     cJSON_AddStringToObject(p, "chart", c->id);
     cJSON_AddStringToObject(p, "chartHash", c->hash);
     cJSON_AddStringToObject(p, "audioHash", c->audio_hash);
-    return queue(n, "config", p);
+    return queue(n, "config", p) || nc_error(err, "%s", n->status);
 }
 /**
  * @brief 客人核对本地谱面，并向房主确认资源匹配。
@@ -353,8 +352,10 @@ bool net_verify(Network *n, const Chart *c, char *err) {
     cJSON_AddNumberToObject(p, "revision", n->revision);
     cJSON_AddStringToObject(p, "chartHash", c->hash);
     cJSON_AddStringToObject(p, "audioHash", c->audio_hash);
+    if (!queue(n, "verified", p))
+        return nc_error(err, "%s", n->status);
     n->peer_verified = true;
-    return queue(n, "verified", p);
+    return true;
 }
 /**
  * @brief 切换本机准备状态并通知对方。
@@ -406,33 +407,14 @@ static bool number64(const cJSON *p, const char *key, int64_t *out) {
     return true;
 }
 /**
- * @brief 当双方最终统计齐备时，由房主发起结果确认。
- * 参数：n 为包含 local_final 和 peer_stats 的会话。
- * 返回：无返回值；满足条件时入队一份 result，并标记 ack_sent。
- * 说明：只有房主且双方均完成且尚未发送时执行；负载明确 host/guest 两侧统计。此时尚未
- * confirmed，必须收到后续 result_ack 才能确认。
+ * @brief 客人收齐双方最终成绩后向房主发送确认请求。
+ * 参数：n 为会话；NET_WAIT 表示本机的 finish 已入队，peer_finished 表示已收到对方的 finish。
+ * 返回：无需发送或 result_ack 成功入队时返回 true，入队失败返回 false。
+ * 说明：本机提交和对方提交分别触发一次检查，后到的一项使条件成立。TCP 保证房主先收到客人的
+ * finish，再收到 result_ack；客人仍需等待房主的 confirmed。
  */
-static void maybe_result(Network *n) {
-    if (!n->local_finished || !n->peer_finished)
-        return;
-    if (n->host && !n->ack_sent) {
-        cJSON *p = cJSON_CreateObject();
-        cJSON_AddItemToObject(p, "host", stats_json(&n->local_final));
-        cJSON_AddItemToObject(p, "guest", stats_json(&n->peer_stats));
-        queue(n, "result", p);
-        n->ack_sent = true;
-    }
-}
-/**
- * @brief 比较两份统计的所有业务字段是否完全相等。
- * 参数：a/b 为待比较 Stats。
- * 返回：八个字段逐一相等返回 true，否则返回 false。
- * 说明：不使用 memcmp，避免结构体填充字节影响判断；用于核对房主发送的最终统计与本机已经收到/产生的统计一致。
- */
-static bool stats_equal(const Stats *a, const Stats *b) {
-    return a->perfect == b->perfect && a->great == b->great && a->good == b->good &&
-           a->miss == b->miss && a->combo == b->combo && a->max_combo == b->max_combo &&
-           a->finalized == b->finalized && a->units == b->units;
+static bool acknowledge_result(Network *n) {
+    return n->host || n->state != NET_WAIT || !n->peer_finished || queue(n, "result_ack", NULL);
 }
 /**
  * @brief 校验并处理一条完整 JSON 协议消息。
@@ -494,8 +476,7 @@ static bool process(Network *n, cJSON *o) {
             return false;
         if (rtt < n->best_rtt) {
             n->best_rtt = rtt;
-            n->offset = host - (sent + nc_now()) / 2;
-            n->rtt = rtt;
+            n->offset = host - (sent + rtt / 2);
         }
         n->samples++;
         n->ping_time = -1;
@@ -558,66 +539,39 @@ static bool process(Network *n, cJSON *o) {
     }
     if (strcmp(match, n->match) || !n->match[0])
         return false;
-    if (!strcmp(type, "stats")) {
+    bool finishing = !strcmp(type, "finish");
+    if (finishing || !strcmp(type, "stats")) {
+        /* 允许对方略早进入演奏并发送实时比分，最终成绩等本地也进入演奏阶段才处理。 */
+        if (n->peer_finished || (n->state != NET_PLAY && n->state != NET_WAIT &&
+                                 (finishing || n->state != NET_COUNTDOWN)))
+            return false;
+        if (!finishing) {
+            if (!json_int(p, "time", n->peer_time, 3601000, &n->peer_time))
+                return false;
+            p = cJSON_GetObjectItemCaseSensitive(p, "stats");
+        }
         Stats s;
-        int time;
-        if ((n->state != NET_COUNTDOWN && n->state != NET_PLAY && n->state != NET_WAIT) ||
-            n->peer_finished || !json_int(p, "time", 0, 3601000, &time) || time < n->peer_time ||
-            !stats_parse(cJSON_GetObjectItemCaseSensitive(p, "stats"), &s, n->count, false) ||
-            s.finalized < n->peer_stats.finalized || s.perfect < n->peer_stats.perfect ||
+        if (!stats_parse(p, &s, n->count, finishing) || s.perfect < n->peer_stats.perfect ||
             s.great < n->peer_stats.great || s.good < n->peer_stats.good ||
             s.miss < n->peer_stats.miss || s.max_combo < n->peer_stats.max_combo)
             return false;
         n->peer_stats = s;
-        n->peer_time = time;
-        return true;
+        n->peer_finished = finishing;
+        return !finishing || acknowledge_result(n);
     }
-    if (!strcmp(type, "finish")) {
-        Stats s;
-        if ((n->state != NET_PLAY && n->state != NET_WAIT) || n->peer_finished ||
-            !stats_parse(p, &s, n->count, true) || s.perfect < n->peer_stats.perfect ||
-            s.great < n->peer_stats.great || s.good < n->peer_stats.good ||
-            s.miss < n->peer_stats.miss || s.max_combo < n->peer_stats.max_combo)
-            return false;
-        n->peer_stats = s;
-        n->peer_finished = true;
-        maybe_result(n);
-        return true;
-    }
-    if (!strcmp(type, "result")) {
-        Stats h, g;
-        if (n->host || !n->local_finished || !n->peer_finished || n->ack_sent ||
-            !stats_parse(cJSON_GetObjectItemCaseSensitive(p, "host"), &h, n->count, true) ||
-            !stats_parse(cJSON_GetObjectItemCaseSensitive(p, "guest"), &g, n->count, true) ||
-            !stats_equal(&h, &n->peer_stats) || !stats_equal(&g, &n->local_final))
-            return false;
-        n->ack_sent = true;
-        return queue(n, "result_ack", NULL);
-    }
-    if (!strcmp(type, "result_ack")) {
-        if (!n->host || !n->ack_sent || n->confirmed || !n->local_finished || !n->peer_finished)
-            return false;
-        if (!queue(n, "confirmed", NULL))
+    if (!strcmp(type, n->host ? "result_ack" : "confirmed")) {
+        if (n->state != NET_WAIT || !n->peer_finished || (n->host && !queue(n, "confirmed", NULL)))
             return false;
         n->confirmed = true;
         n->state = NET_DONE;
         status(n, "双方成绩已确认");
         return true;
     }
-    if (!strcmp(type, "confirmed")) {
-        if (n->host || !n->ack_sent || n->confirmed || !n->local_finished || !n->peer_finished)
+    if (!strcmp(type, n->host ? "rematch_ack" : "rematch")) {
+        /* 客人先确认上一局的 match，双方再各自清除上一局数据。 */
+        if (n->state != NET_DONE || (!n->host && !queue(n, "rematch_ack", NULL)))
             return false;
-        n->confirmed = true;
-        n->state = NET_DONE;
-        status(n, "双方成绩已确认");
-        return true;
-    }
-    if (!strcmp(type, "rematch")) {
-        if (n->host || n->state != NET_DONE || !n->confirmed ||
-            !cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(p, "request")))
-            return false;
-        queue(n, "rematch_ack", NULL);
-        n->confirmed = n->ack_sent = n->local_finished = n->peer_finished = false;
+        n->confirmed = n->peer_finished = false;
         n->state = NET_ROOM;
         n->ready = n->peer_ready = n->peer_verified = false;
         n->peer_time = 0;
@@ -625,23 +579,7 @@ static bool process(Network *n, cJSON *o) {
         n->match[0] = 0;
         n->revision = 0;
         n->configured = false;
-        status(n, "房主请求再来一局");
-        return true;
-    }
-    if (!strcmp(type, "rematch_ack")) {
-        if (!n->host || n->state != NET_DONE || !n->confirmed)
-            return false;
-        n->confirmed = n->ack_sent = n->local_finished = n->peer_finished = false;
-        n->state = NET_ROOM;
-        n->ready = n->peer_ready = n->peer_verified = false;
-        n->peer_time = 0;
-        n->peer_stats = (Stats){0};
-        n->match[0] = 0;
-        n->revision = 0;
-        n->configured = false;
-        n->samples = 3;
-        n->best_rtt = INT64_MAX;
-        status(n, "房间已重置，重新加载谱面");
+        status(n, n->host ? "房间已重置，重新加载谱面" : "房主请求再来一局");
         return true;
     }
     return false;
@@ -651,7 +589,8 @@ static bool process(Network *n, cJSON *o) {
  * 参数：n 为已初始化会话，需高频重复调用。
  * 返回：无返回值；新消息、超时或错误通过 n->state/status/统计字段反映。
  * 说明：处理 accept/select、部分收发及半包粘包，每次最多 32 轮 recv；额外客人被拒绝。检查 5
- * 秒握手、8 秒连接、10 秒心跳和 20 秒结算等待，并每 500ms 发送同步或心跳；不参与本地击键判定。
+ * 秒握手、8 秒连接、10 秒心跳和 20 秒结算等待，并每 500ms 发送同步或心跳。进入 NET_DONE 后先交给应用层保存，
+ * 即使同批数据里已经收到复赛请求，也留到下一次轮询处理，避免提前清掉本局统计。
  */
 void net_poll(Network *n) {
     int64_t now = nc_now();
@@ -689,24 +628,9 @@ void net_poll(Network *n) {
     flush(n);
     if (n->socket == INVALID_NET)
         return;
-    /* Bound receive work each frame so hostile streams cannot starve input/rendering. */
-    for (int budget = 0; budget < 32 && n->socket != INVALID_NET; budget++) {
-        int got =
-            recv((SOCKET)n->socket, (char *)n->rx + n->rxlen, (int)(sizeof(n->rx) - n->rxlen), 0);
-        if (got == 0) {
-            if (n->confirmed) {
-                close_socket(&n->socket);
-                close_socket(&n->listener);
-            } else
-                failed(n, "连接已断开，本局不保存");
-            break;
-        }
-        if (got < 0) {
-            if (WSAGetLastError() != WSAEWOULDBLOCK)
-                failed(n, "网络连接错误，本局不保存");
-            break;
-        }
-        n->rxlen += (size_t)got;
+    NetState previous_state = n->state;
+    /* 先解析已缓存的数据，再限制当帧接收次数，避免持续收包拖慢界面。 */
+    for (int reads = 0; ; reads++) {
         while (n->rxlen) {
             cJSON *o;
             size_t used;
@@ -715,24 +639,49 @@ void net_poll(Network *n) {
                 break;
             if (rc < 0) {
                 failed(n, "收到非法数据帧，连接已中止");
-                break;
+                return;
             }
             bool ok = process(n, o);
             cJSON_Delete(o);
             if (!ok) {
-                failed(n, "协议版本、状态或数据校验失败");
-                break;
+                if (n->state != NET_ABORT)
+                    failed(n, "协议版本、状态或数据校验失败");
+                return;
             }
             memmove(n->rx, n->rx + used, n->rxlen - used);
             n->rxlen -= used;
+            if (n->socket == INVALID_NET)
+                return;
+            if (previous_state != NET_DONE && n->state == NET_DONE) {
+                flush(n);
+                return;
+            }
         }
         if (n->rxlen == sizeof(n->rx)) {
             failed(n, "接收缓冲超过限制");
+            return;
+        }
+        if (reads == 32)
+            break;
+        int got =
+            recv((SOCKET)n->socket, (char *)n->rx + n->rxlen, (int)(sizeof(n->rx) - n->rxlen), 0);
+        if (got == 0) {
+            if (n->confirmed) {
+                close_socket(&n->socket);
+                close_socket(&n->listener);
+            } else
+                failed(n, "连接已断开，本局不保存");
+            return;
+        }
+        if (got < 0) {
+            if (WSAGetLastError() != WSAEWOULDBLOCK) {
+                failed(n, "网络连接错误，本局不保存");
+                return;
+            }
             break;
         }
+        n->rxlen += (size_t)got;
     }
-    if (n->socket == INVALID_NET)
-        return;
     if (now - n->last_rx > 10000) {
         failed(n, "心跳或结算确认超时，本局不保存");
         return;
@@ -767,7 +716,7 @@ void net_poll(Network *n) {
  * Engine。
  */
 void net_stats(Network *n, const Stats *s, int time) {
-    if (n->state != NET_PLAY || nc_now() - n->last_stats < 100 || n->local_finished)
+    if (n->state != NET_PLAY || nc_now() - n->last_stats < 100)
         return;
     n->last_stats = nc_now();
     cJSON *p = cJSON_CreateObject();
@@ -777,22 +726,19 @@ void net_stats(Network *n, const Stats *s, int time) {
 }
 /**
  * @brief 提交本机完整成绩并进入等待确认阶段。
- * 参数：n 必须处于 NET_PLAY 且尚未完成；s 必须通过完整 stats_valid；err 可空。
- * 返回：成功入队最终统计返回 true；不完整、重复或状态非法返回 false。
- * 说明：复制 local_final，置 local_finished 和 NET_WAIT 并重置等待计时；若对方也完成则
- * maybe_result。返回成功仍不是正式确认，应用层应等待 confirmed 后保存。
+ * 参数：n 必须处于 NET_PLAY；s 必须通过完整 stats_valid；err 可空。
+ * 返回：最终统计及适用的确认消息成功入队时返回 true；状态、统计或发送出错返回 false。
+ * 说明：先入队 finish，再进入 NET_WAIT 并重置等待计时。客人收到房主最终统计后可发送 result_ack，
+ * 应用层应等双方确认后保存。
  */
 bool net_finish(Network *n, const Stats *s, char *err) {
-    if (n->state != NET_PLAY || n->local_finished || !stats_valid(s, n->count, true))
+    if (n->state != NET_PLAY || !stats_valid(s, n->count, true))
         return nc_error(err, "无法提交不完整的联机成绩");
-    n->local_finished = true;
-    n->local_final = *s;
-    n->state = NET_WAIT;
-    n->since = nc_now();
     if (!queue(n, "finish", stats_json(s)))
         return nc_error(err, "最终成绩发送失败");
-    maybe_result(n);
-    return true;
+    n->state = NET_WAIT;
+    n->since = nc_now();
+    return acknowledge_result(n) || nc_error(err, "最终成绩确认发送失败");
 }
 /**
  * @brief 由已完成对局的房主发起再来一局。
@@ -802,11 +748,9 @@ bool net_finish(Network *n, const Stats *s, char *err) {
  * 连接发送，避免重新建连接。
  */
 bool net_rematch(Network *n, char *err) {
-    if (!n->host || n->state != NET_DONE || !n->confirmed)
+    if (!n->host || n->state != NET_DONE)
         return nc_error(err, "等待房主请求再来一局");
-    cJSON *p = cJSON_CreateObject();
-    cJSON_AddBoolToObject(p, "request", true);
-    return queue(n, "rematch", p);
+    return queue(n, "rematch", NULL) || nc_error(err, "%s", n->status);
 }
 /**
  * @brief 列出本机主机名解析出的 IPv4 地址供手动加入。

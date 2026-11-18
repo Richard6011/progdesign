@@ -16,11 +16,12 @@ static void report(App *a, const char *s) { nc_copy(a->message, sizeof(a->messag
  * @brief 按当前选曲释放旧引擎并替换谱面。
  * 参数：a 已含有效曲库、song 和 diff，chart/engine 已清零或初始化。
  * 返回：chart_load 成功返回 true，失败返回 false 并将原因写入 message。
- * 说明：先 engine_free，确保旧引擎不再借用谱面数组；随后 chart_load 成功才替换
- * chart。失败虽保留旧谱面，但引擎已释放，应用应停止启动新局。
+ * 说明：先 engine_free，确保旧引擎不再借用谱面数组，再清空旧谱面。加载失败时
+ * chart.count 为零，选曲页禁用开始按钮，排行榜也不会误用上一首歌的谱面。
  */
 static bool load_chart(App *a) {
     engine_free(&a->engine);
+    chart_free(&a->chart);
     return chart_load(&a->lib, a->song, a->diff, &a->chart, a->message);
 }
 /**
@@ -39,15 +40,14 @@ static bool preload(App *a) {
 /**
  * @brief 中止尚未正式确认的演奏并返回准备页面。
  * 参数：a 为应用状态；why 为中止原因。
- * 返回：无返回值；清除音乐、预加载、倒计时与运行标志。
- * 说明：未完成的引擎置 ABORTED；联机同时 net_abort 并返回大厅，单人返回选曲。不调用
+ * 返回：无返回值；关闭音乐，释放本局引擎，清除预加载与倒计时。
+ * 说明：谱面继续由 App 持有。联机同时 net_abort 并返回大厅，单人返回选曲。不调用
  * save_result，因此未完成成绩不会因中止写入。
  */
 static void abort_run(App *a, const char *why) {
     audio_close();
-    a->media_ready = a->countdown = a->run_active = false;
-    if (a->engine.state != FINISHED)
-        a->engine.state = ABORTED;
+    engine_free(&a->engine);
+    a->media_ready = a->countdown = false;
     if (a->lan_mode)
         net_abort(&a->net, why);
     report(a, why);
@@ -56,47 +56,46 @@ static void abort_run(App *a, const char *why) {
 /**
  * @brief 建立新局的引擎状态并进入计划倒计时。
  * 参数：a 的 chart 和音频预加载应已完成；target 为本机单调毫秒时钟中的计划起播点。
- * 返回：引擎初始化成功返回 true；失败会 abort_run 并返回 false。
- * 说明：创建新 session 标识，清除保存/提交/起播标志，置 run_active 和
- * countdown，转到游戏页。此时不播放音频，真正起播由后续更新函数触发。
+ * 返回：无返回值；引擎初始化失败时由 abort_run 返回准备页。
+ * 说明：创建新 session 标识，清除上局保存状态，并记录计划开局时刻。进入游戏页表示有正在运行的对局，
+ * countdown 表示音乐尚未起播，真正起播由 update_game 触发。
  */
-static bool begin_run(App *a, int64_t target) {
+static void begin_run(App *a, int64_t target) {
     if (!engine_start(&a->engine, &a->chart, a->settings.offset)) {
         abort_run(a, "游戏引擎分配内存失败");
-        return false;
+        return;
     }
     nc_uuid(a->session);
-    a->saved = a->submitted = a->started = false;
+    a->saved = false;
     a->target = target;
     a->countdown = true;
-    a->run_active = true;
     a->page = PAGE_GAME;
     report(a, "");
-    return true;
 }
 /**
  * @brief 用当前曲目配置开始一场独立单人演奏。
- * 参数：a 为应用状态，song/diff 已选定。
+ * 参数：a 为单人应用状态，chart 对应当前选曲和难度。
  * 返回：无返回值，错误通过 message 或 begin_run 的中止流程反映。
- * 说明：退出旧网络会话、关闭旧音乐，重新加载谱面和音频；只有两步均成功才安排三秒倒计时。重开复用本函数，未完成的旧统计不会保存
- * 。
+ * 说明：复用选曲时载入的谱面，重新打开音频并安排三秒倒计时。重开复用同一流程，未完成的旧统计不会保存。
+ * 音频打开失败时回到选曲页并显示原因，避免停在已失去音乐的演奏页。
  */
 static void solo_start(App *a) {
-    a->lan_mode = false;
-    net_leave(&a->net);
-    audio_close();
-    if (load_chart(a) && preload(a))
+    if (a->chart.count && preload(a))
         begin_run(a, nc_now() + 3000);
+    else {
+        a->countdown = false;
+        a->page = PAGE_SELECT;
+    }
 }
 /**
  * @brief 读取适合本局判定的非倒退音乐时间。
- * 参数：a 为应用状态，含 started/countdown、引擎状态和最后音频位置。
+ * 参数：a 为游戏页的应用状态，含 countdown、引擎状态和最后音频位置。
  * 返回：未起播、倒计时、暂停或查询失败时返回引擎原时间；正常返回不小于旧时间的音频毫秒位置。
  * 说明：音频位置变化时更新 last_audio_position/last_audio_change
  * 供停滞检测；不靠每帧固定增量推进，因此渲染帧率不会直接改变判定时钟。
  */
 static int music_time(App *a) {
-    if (!a->started || a->countdown || a->engine.state == PAUSED || a->engine.state == RESUME_READY)
+    if (a->countdown || a->engine.state == PAUSED || a->engine.state == RESUME_READY)
         return a->engine.now;
     int pos = audio_position();
     if (pos < 0)
@@ -123,8 +122,8 @@ static void pause_run(App *a) {
         abort_run(a, "已取消倒计时");
         return;
     }
+    engine_tick(&a->engine, music_time(a));
     if (a->engine.state == PLAYING) {
-        engine_tick(&a->engine, music_time(a));
         if (!audio_pause(a->message)) {
             abort_run(a, "音乐暂停失败");
             return;
@@ -156,22 +155,11 @@ static void resume_run(App *a) {
 }
 /**
  * @brief 在满足完成与联机确认要求时保存一次成绩。
- * 参数：a 提供本局 session、当前账号、谱面和最终统计。
- * 返回：无返回值；成功设 saved=true，失败通过 message 提示，可点击重试。
- * 说明：saved 为真直接返回；联机必须 net.confirmed，所有模式必须完整有效。构建 Record 并用 UTC
- * 系统日期，不用单调时钟作日期；存储层再次执行幂等检查与原子写入。
+ * 参数：a 提供本局 session、当前账号、谱面和最终统计；联机由调用方等待双方确认。
+ * 返回：无返回值；成功设 saved=true，失败通过 message 提示。
+ * 说明：构建 Record 并用 UTC 系统日期记录成绩。不使用单调时钟作日期，存储层负责完赛校验、去重与原子写入。
  */
 static void save_result(App *a) {
-    if (a->saved)
-        return;
-    if (a->lan_mode && !a->net.confirmed) {
-        report(a, "等待成绩确认");
-        return;
-    }
-    if (!stats_valid(&a->engine.stats, a->chart.count, true)) {
-        report(a, "成绩未完成");
-        return;
-    }
     Record r = {0};
     nc_copy(r.session, sizeof(r.session), a->session);
     nc_copy(r.name, sizeof(r.name), a->name);
@@ -201,103 +189,92 @@ static void save_result(App *a) {
  * @brief 重新加载房主选择，并公布已预加载的资源配置。
  * 参数：a 为已握手且处于房间中的房主应用状态。
  * 返回：无返回值，错误写 message 或 net_abort。
- * 说明：先释放旧引擎/载入谱面，再预加载音频；失败中止网络。成功发送 net_configure 后记录
- * loaded_revision，配置变更会让双方重新准备。
+ * 说明：先释放旧引擎并载入当前谱面，再预加载音频。资源失败时中止网络；成功发布配置后，
+ * 网络层会清除旧准备状态，双方需要重新确认。
  */
 static void configure_host(App *a) {
     if (!load_chart(a) || !preload(a)) {
         net_abort(&a->net, a->message);
         return;
     }
-    if (net_configure(&a->net, a->song, a->diff, &a->chart, a->message)) {
-        a->loaded_revision = a->net.revision;
+    if (net_configure(&a->net, a->song, a->diff, &a->chart, a->message))
         report(a, "");
-    }
 }
 /**
  * @brief 把非阻塞网络状态转换成应用层加载、开局与保存动作。
  * 参数：a 为每帧应用状态；仅 lan_mode 为真时工作。
  * 返回：无返回值，修改页面、媒体准备和本局标志。
- * 说明：先 net_poll，处理中止、再来一局、房主发配置/客人校验；倒计时建立本地引擎，NET_PLAY 到达
- * target 后起播。双方最终确认后才 save_result；不在这里处理击键或重新计算对手判定。
+ * 说明：先 net_poll，处理中止、再来一局、房主发配置/客人校验。倒计时建立本地引擎，
+ * update_game 收到 NET_PLAY 状态后起播；结果页首次进入 NET_DONE 时保存本局成绩。
  */
 static void update_network(App *a) {
     if (!a->lan_mode)
         return;
+    NetState previous_state = a->net.state;
     net_poll(&a->net);
     if (a->net.state == NET_ABORT) {
         audio_close();
-        a->media_ready = a->run_active = a->countdown = false;
-        if (a->page == PAGE_GAME || a->page == PAGE_RESULT)
+        a->media_ready = a->countdown = false;
+        if (a->page == PAGE_GAME || a->page == PAGE_RESULT) {
+            engine_free(&a->engine);
             a->page = PAGE_LAN;
+        }
         report(a, a->net.status);
         return;
     }
-    if (a->net.state == NET_ROOM && a->submitted) {
-        a->submitted = a->saved = false;
-        a->loaded_revision = 0;
+    if (a->net.state == NET_ROOM && a->page == PAGE_RESULT) {
+        a->saved = false;
         a->media_ready = false;
         a->page = PAGE_LAN;
     }
     if (a->net.state == NET_ROOM && a->net.handshake && !a->net.configured && a->net.host)
         configure_host(a);
-    if (a->net.state == NET_ROOM && a->net.handshake && a->net.configured && !a->net.host &&
-        a->loaded_revision != a->net.revision) {
+    if (a->net.state == NET_ROOM && !a->net.host && a->net.configured && !a->net.peer_verified) {
         a->song = a->net.song;
         a->diff = a->net.difficulty;
-        if (!load_chart(a) || !preload(a) || !net_verify(&a->net, &a->chart, a->message)) {
-            net_abort(&a->net, "本地资源与房主不一致");
+        if (!load_chart(a) || !preload(a)) {
+            net_abort(&a->net, a->message);
             return;
         }
-        a->loaded_revision = a->net.revision;
-        report(a, "");
+        if (net_verify(&a->net, &a->chart, a->message))
+            report(a, "");
     }
-    if ((a->net.state == NET_COUNTDOWN || a->net.state == NET_PLAY) && !a->run_active &&
-        !a->submitted) {
+    if (a->page == PAGE_LAN && (a->net.state == NET_COUNTDOWN || a->net.state == NET_PLAY)) {
         if (!a->media_ready) {
             net_abort(&a->net, "音乐未预加载");
             return;
         }
         begin_run(a, a->net.target);
     }
-    if (a->net.state == NET_DONE && a->submitted && !a->saved)
+    if (previous_state != NET_DONE && a->net.state == NET_DONE && a->page == PAGE_RESULT)
         save_result(a);
-    if (a->net.state == NET_PLAY && !a->started && nc_now() >= a->net.target - 20) {
-        if (!a->media_ready || !audio_play(a->message)) {
-            abort_run(a, "计划开局时音乐播放失败");
-            return;
-        }
-        a->started = true;
-        a->countdown = false;
-        a->last_audio_position = 0;
-        a->last_audio_change = nc_now();
-    }
 }
 /**
  * @brief 逐帧推进演奏生命周期并在音乐结束附近进入结算。
  * 参数：a 包含已准备的引擎、媒体、倒计时和网络状态。
  * 返回：无返回值；启动/结束/停滞错误通过状态与 message 反映。
- * 说明：单人倒计时到时起播，随后用 music_time
- * 推进引擎并发布联机统计。超过三秒无位置变化且未近尾视为停滞；必须所有音符已结算且音乐到尾前 20ms
+ * 说明：单人倒计时到时起播；联机等待网络模块按校准后的时钟进入 NET_PLAY，两种模式共用音频起播逻辑。
+ * 随后用 music_time 推进引擎并发布联机统计。超过三秒无位置变化视为停滞；所有音符结算且音乐到尾前 20ms
  * 才停止，单人保存、联机提交后等待确认。
  */
 static void update_game(App *a) {
-    if (!a->run_active)
+    if (a->page != PAGE_GAME)
         return;
-    if (a->countdown && !a->lan_mode && nc_now() >= a->target) {
+    if (a->countdown) {
+        if (a->lan_mode ? a->net.state != NET_PLAY : nc_now() < a->target)
+            return;
         if (!audio_play(a->message)) {
-            abort_run(a, "音乐播放失败");
+            abort_run(a, a->lan_mode ? "计划开局时音乐播放失败" : "音乐播放失败");
             return;
         }
-        a->started = true;
         a->countdown = false;
         a->last_audio_position = 0;
         a->last_audio_change = nc_now();
     }
-    if (!a->started || a->engine.state == PAUSED || a->engine.state == RESUME_READY)
+    if (a->engine.state == PAUSED || a->engine.state == RESUME_READY)
         return;
     int now = music_time(a);
-    if (nc_now() - a->last_audio_change > 3000 && now < a->chart.duration - 220) {
+    if (nc_now() - a->last_audio_change > 3000) {
         abort_run(a, "音乐播放停滞，本局中止");
         return;
     }
@@ -306,13 +283,11 @@ static void update_game(App *a) {
         net_stats(&a->net, &a->engine.stats, now);
     if (a->engine.state == FINISHED && now >= a->chart.duration - 20) {
         audio_close();
-        a->run_active = false;
         if (a->lan_mode) {
             if (!net_finish(&a->net, &a->engine.stats, a->message)) {
                 abort_run(a, "最终成绩发送失败");
                 return;
             }
-            a->submitted = true;
             report(a, "等待成绩确认");
         } else
             save_result(a);
@@ -322,7 +297,7 @@ static void update_game(App *a) {
 /**
  * @brief 清理房间与媒体，使应用退出联机运行流程。
  * 参数：a 为应用状态，网络对象已经初始化。
- * 返回：无返回值；清除联机、预加载、运行、版本及已提交标志。
+ * 返回：无返回值；清除联机、预加载和倒计时状态。
  * 说明：若正在开局/演奏/等待结果，先发中止再关闭连接；其他阶段直接 net_leave。该函数不切换
  * page，也不释放谱面，调用动作随后决定目的页面。
  */
@@ -332,16 +307,14 @@ static void leave_room(App *a) {
     net_leave(&a->net);
     audio_close();
     a->lan_mode = false;
-    a->media_ready = a->run_active = false;
-    a->loaded_revision = 0;
-    a->submitted = false;
+    a->media_ready = a->countdown = false;
 }
 /**
  * @brief 切换曲目或难度并按需更新房主配置。
  * 参数：a 为状态；song 为欲选下标（越过首尾时循环）；diff 应由界面保证在 0—2。
  * 返回：无返回值；加载结果通过 message 和 chart 体现。
- * 说明：联机仅 NET_ROOM 中的房主可改；先停旧音乐，再重载谱面，握手后再调用 configure_host
- * 发布新配置。这个函数不开始演奏、不保存旧局。
+ * 说明：联机仅 NET_ROOM 中的房主可改；先停旧音乐。已握手的房主通过 configure_host 载入并发布新谱面，
+ * 其余页面只载入谱面。切换不会开始演奏或保存旧局。
  */
 static void change_selection(App *a, int song, int diff) {
     if (a->lan_mode && (!a->net.host || a->net.state != NET_ROOM))
@@ -357,11 +330,9 @@ static void change_selection(App *a, int song, int diff) {
         a->rank_page = 0;
     audio_close();
     a->media_ready = false;
-    if (!load_chart(a))
-        return;
     if (a->lan_mode && a->net.handshake)
         configure_host(a);
-    else
+    else if (load_chart(a))
         report(a, "");
 }
 /**
@@ -419,24 +390,17 @@ static void action(App *a, Action act, int value) {
             }
         }
         break;
-    case ACT_SOLO:
-        a->lan_mode = false;
-        net_leave(&a->net);
-        a->page = PAGE_SELECT;
-        if (load_chart(a))
-            report(a, "");
-        break;
     case ACT_LAN:
         leave_room(a);
         a->lan_mode = true;
         a->page = PAGE_LAN;
-        if (load_chart(a))
-            report(a, "");
+        report(a, "");
         break;
+    case ACT_SOLO:
     case ACT_RANK:
         /* 排行榜固定展示单人成绩，离开旧联机会话才能正常切换曲目。 */
         leave_room(a);
-        a->page = PAGE_RANK;
+        a->page = act == ACT_SOLO ? PAGE_SELECT : PAGE_RANK;
         a->rank_page = 0;
         if (load_chart(a))
             report(a, "");
@@ -466,14 +430,13 @@ static void action(App *a, Action act, int value) {
         change_selection(a, a->song, value);
         break;
     case ACT_PLAY:
+    case ACT_RESTART:
         solo_start(a);
         break;
     case ACT_HOST: {
         int port = 0;
         if (port_number(a, &port)) {
-            net_leave(&a->net);
             a->lan_mode = true;
-            a->loaded_revision = 0;
             if (net_host(&a->net, port, a->name, a->message))
                 report(a, "等待加入");
         }
@@ -499,27 +462,12 @@ static void action(App *a, Action act, int value) {
     case ACT_RESUME:
         resume_run(a);
         break;
-    case ACT_RESTART:
-        if (a->lan_mode) {
-            leave_room(a);
-            a->lan_mode = true;
-            a->page = PAGE_LAN;
-            report(a, "");
-        } else
-            solo_start(a);
-        break;
     case ACT_ABORT:
         abort_run(a, "");
         break;
-    case ACT_SAVE:
-        save_result(a);
-        break;
     case ACT_REMATCH:
         if (net_rematch(&a->net, a->message)) {
-            a->submitted = a->saved = false;
-            a->run_active = false;
-            a->loaded_revision = 0;
-            a->media_ready = false;
+            a->saved = a->media_ready = false;
             a->page = PAGE_LAN;
             report(a, "加载中");
         }
@@ -661,7 +609,7 @@ static void input(App *a, const UiEvent *e) {
  * @brief 初始化应用、运行事件循环，并在正常退出时释放资源。
  * 参数：argc/argv 为进程命令行，可含 --data-dir、--assets、--quit-after 及各自参数。
  * 返回：正常退出返回 0；分配、库加载、网络初始化或窗口创建失败返回 1。
- * 说明：在堆上分配大型 App，读取设置/成绩并预检全部资源；每帧最多处理 128 个事件，再更新网络、游戏、绘制和短暂让出
+ * 说明：在堆上分配大型 App，读取设置、成绩和曲库索引；实际谱面按选择加载。每帧最多处理 128 个事件，再更新网络、游戏、绘制和短暂让出
  * CPU。最终按音频、引擎、谱面、存储、网络和窗口次序清理。
  */
 int app_run(int argc, char **argv) {
@@ -681,8 +629,7 @@ int app_run(int argc, char **argv) {
             a->quit_at = nc_now() + atoi(argv[++i]);
     }
     warning[0] = 0;
-    a->settings_writable = settings_load(a->data, &a->settings, a->message);
-    if (!a->settings_writable)
+    if (!settings_load(a->data, &a->settings, a->message))
         nc_copy(warning, sizeof(warning), a->message);
     if (!store_load(&a->store, a->data, a->message))
         nc_copy(warning, sizeof(warning), a->message);
@@ -699,7 +646,6 @@ int app_run(int argc, char **argv) {
     a->page = PAGE_LOGIN;
     a->focus = 1;
     net_reset(&a->net);
-    load_chart(a);
     report(a, warning);
     if (!gfx_open(1280, 800, "音符碰撞")) {
         store_free(&a->store);

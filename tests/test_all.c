@@ -43,6 +43,8 @@ static void score_tests(void) {
         stats_apply(&s, PERFECT);
     r = stats_result(&s, 100);
     CHECK(r.score == 1000000 && r.ap && r.fc && r.grade == 'S');
+    r = stats_result(&s, 0);
+    CHECK(r.score == 0 && !r.complete && r.grade == 'D');
     CHECK(!stats_valid(&s, 99, true));
     s.perfect = INT_MAX;
     CHECK(!stats_valid(&s, 100, true));
@@ -53,7 +55,7 @@ static void score_tests(void) {
  * 参数：notes 为调用者数组，n 为元素数。
  * 返回：返回 Chart 值，时长 6000ms、approach 1800ms，notes 不复制。
  * 说明：仅用于受控单元测试；它不分配内存、不做校验，不得对返回值调用 chart_free 释放栈数组，调用者需让 notes
- * 在引擎使用期间保持有效。
+ * 按头部时刻、轨道、ID 排序并在引擎使用期间保持有效。
  */
 static Chart tiny(Note *notes, int n) {
     Chart c = {0};
@@ -73,7 +75,7 @@ static Chart tiny(Note *notes, int n) {
 static void engine_tests(void) {
     const int offsets[] = {-221, -220, -151, -150, -91, -90, 0, 90, 91, 150, 151, 220, 221};
     for (int k = 0; k < 13; k++) {
-        Note note = {1, 0, 1000, 1000, -1, -1, TAP};
+        Note note = {.id = 1, .lane = 0, .time = 1000, .end = 1000, .type = TAP};
         Chart c = tiny(&note, 1);
         Engine e = {0};
         CHECK(engine_start(&e, &c, 0));
@@ -88,9 +90,9 @@ static void engine_tests(void) {
         CHECK(e.stats.finalized == 1);
         engine_free(&e);
     }
-    Note notes[] = {{1, 0, 1000, 2000, -1, -1, HOLD},
-                    {2, 1, 1200, 1200, -1, -1, TAP},
-                    {3, 2, 2100, 2100, -1, -1, TAP}};
+    Note notes[] = {{.id = 1, .lane = 0, .time = 1000, .end = 2000, .type = HOLD},
+                    {.id = 2, .lane = 1, .time = 1200, .end = 1200, .type = TAP},
+                    {.id = 3, .lane = 2, .time = 2100, .end = 2100, .type = TAP}};
     Chart c = tiny(notes, 3);
     Engine e = {0};
     CHECK(engine_start(&e, &c, 0));
@@ -129,7 +131,7 @@ static void engine_tests(void) {
     engine_release(&e, 0, 2000);
     CHECK(e.stats.perfect == 1);
     engine_free(&e);
-    Note tap = {1, 0, 1000, 1000, -1, -1, TAP};
+    Note tap = {.id = 1, .lane = 0, .time = 1000, .end = 1000, .type = TAP};
     c = tiny(&tap, 1);
     CHECK(engine_start(&e, &c, 200));
     CHECK(engine_press(&e, 0, 800));
@@ -185,11 +187,140 @@ static void replay(const Chart *c) {
     free(events);
 }
 /**
+ * @brief 在发布前检查内置谱面的音符 ID、连锁组和同时按键组。
+ * 参数：path 为原始谱面 JSON 路径；c 为同一谱面加载后的运行数据。
+ * 返回：无返回值；字段或分组有误时由 CHECK 结束测试。
+ * 说明：检查 ID 唯一、连锁组至少两项、同时按键组至少两项且时刻相同，并核对已加载的同时按键标记数量。
+ */
+static void check_note_groups(const char *path, const Chart *c) {
+    cJSON *object = json_read(path, 16 * 1024 * 1024, error);
+    CHECK(object != NULL);
+    const cJSON *array = cJSON_GetObjectItemCaseSensitive(object, "notes");
+    CHECK(cJSON_IsArray(array) && cJSON_GetArraySize(array) == c->count);
+    struct GroupNote {
+        int id, time, chain, chord;
+    } *groups = calloc((size_t)c->count, sizeof(*groups));
+    CHECK(groups != NULL);
+
+    const cJSON *item;
+    int index = 0, chord_members = 0;
+    cJSON_ArrayForEach(item, array) {
+        struct GroupNote *n = &groups[index++];
+        char type[16];
+        n->chain = n->chord = -1;
+        CHECK(json_int(item, "id", 1, 100000000, &n->id));
+        CHECK(json_int(item, "timeMs", 0, c->duration, &n->time));
+        CHECK(json_str(item, "type", type, sizeof(type)));
+        if (cJSON_HasObjectItem(item, "chainId"))
+            CHECK(json_int(item, "chainId", -1, 100000000, &n->chain));
+        if (cJSON_HasObjectItem(item, "chordId"))
+            CHECK(json_int(item, "chordId", -1, 100000000, &n->chord));
+        CHECK((n->chain >= 0) == (strcmp(type, "chain") == 0));
+        chord_members += n->chord >= 0;
+    }
+    for (int i = 0; i < c->count; i++) {
+        const struct GroupNote *n = &groups[i];
+        int chains = 0, chords = 0;
+        for (int j = 0; j < c->count; j++) {
+            const struct GroupNote *p = &groups[j];
+            if (j < i)
+                CHECK(p->id != n->id);
+            if (n->chain >= 0 && n->chain == p->chain)
+                chains++;
+            if (n->chord >= 0 && n->chord == p->chord) {
+                CHECK(p->time == n->time);
+                chords++;
+            }
+        }
+        CHECK(n->chain < 0 || chains >= 2);
+        CHECK(n->chord < 0 || chords >= 2);
+        chord_members -= c->notes[i].chord;
+    }
+    CHECK(chord_members == 0);
+    free(groups);
+    cJSON_Delete(object);
+}
+/**
+ * @brief 从四个字节读取 WAV 使用的小端无符号整数。
+ * 参数：p 必须指向至少四个可读字节，读取前由调用方完成边界检查。
+ * 返回：返回四个字节合成的 uint32_t。
+ * 说明：逐字节移位后按位或，不依赖 CPU 字节序，也不要求输入指针按四字节对齐。
+ */
+static uint32_t le32(const unsigned char *p) {
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
+/**
+ * @brief 在发布前核对内置 PCM WAV 的数据块和播放时长。
+ * 参数：path 为 UTF-8 文件路径；duration 为谱面声明的毫秒时长。
+ * 返回：无返回值；文件头、块边界或时长有误时由 CHECK 结束测试。
+ * 说明：最多读取 128MiB，检查 RIFF/WAVE、PCM fmt 和 data，按块长度及奇数字节填充跳转。使用
+ * data 字节数/字节率计算时长，允许 1ms 误差；测试通过后释放文件缓冲区。
+ */
+static void check_wav(const char *path, int duration) {
+    char *bytes;
+    size_t size;
+    CHECK(nc_read(path, &bytes, &size, 128 * 1024 * 1024, error));
+    const unsigned char *p = (const unsigned char *)bytes;
+    uint32_t rate = 0, data = 0;
+    CHECK(size >= 12 && !memcmp(p, "RIFF", 4) && !memcmp(p + 8, "WAVE", 4));
+    for (size_t pos = 12; pos + 8 <= size;) {
+        uint32_t n = le32(p + pos + 4);
+        CHECK(n <= size - pos - 8);
+        if (!memcmp(p + pos, "fmt ", 4) && n >= 16) {
+            CHECK(p[pos + 8] == 1 && p[pos + 9] == 0); /* PCM only, as shipped */
+            rate = le32(p + pos + 16);
+        }
+        if (!memcmp(p + pos, "data", 4))
+            data = n;
+        pos += 8 + (size_t)n + (n & 1);
+    }
+    CHECK(rate && data && llabs((int64_t)data * 1000 / rate - duration) <= 1);
+    free(bytes);
+}
+/**
+ * @brief 验证按需加载仍会拒绝缺失或不可演奏的谱面，并保留调用者持有的旧谱面。
+ * 参数：l 为正常曲库，作为临时目录中索引及已加载谱面的来源。
+ * 返回：无返回值；任何与预期不符的结果由 CHECK 结束测试。
+ */
+static void chart_loading_tests(const Library *l) {
+    char exe[NC_PATH], root[NC_PATH], id[65], path[NC_PATH];
+    nc_exe_dir(exe);
+    nc_uuid(id);
+    CHECK(snprintf(root, sizeof(root), "%s/test-data/%s", exe, id) < (int)sizeof(root));
+    CHECK(nc_mkdir(root, error));
+    CHECK(snprintf(path, sizeof(path), "%s/index.json", l->root) < (int)sizeof(path));
+    cJSON *index = json_read(path, 1024 * 1024, error);
+    CHECK(index != NULL);
+    CHECK(snprintf(path, sizeof(path), "%s/index.json", root) < (int)sizeof(path));
+    CHECK(json_save(path, index, error));
+    cJSON_Delete(index);
+
+    Library temporary;
+    CHECK(library_load(&temporary, root, error));
+    Chart c = {0};
+    CHECK(chart_load(l, 0, 0, &c, error));
+    Note *old_notes = c.notes;
+    CHECK(!chart_load(&temporary, 0, 0, &c, error));
+    CHECK(c.notes == old_notes);
+
+    const char *overlap = "{\"schemaVersion\":1,\"chartVersion\":1,\"chartId\":\"overlap\","
+                          "\"songId\":\"neon-pulse\",\"difficulty\":\"Easy\","
+                          "\"audioDurationMs\":6000,\"approachMs\":1800,\"notes\":["
+                          "{\"id\":1,\"type\":\"tap\",\"lane\":0,\"timeMs\":1500},"
+                          "{\"id\":2,\"type\":\"hold\",\"lane\":0,\"timeMs\":1000,\"endMs\":2000}]}";
+    nc_copy(temporary.songs[0].charts[0], NC_PATH, "overlap.json");
+    CHECK(snprintf(path, sizeof(path), "%s/overlap.json", root) < (int)sizeof(path));
+    CHECK(nc_atomic(path, overlap, strlen(overlap), error));
+    CHECK(!chart_load(&temporary, 0, 0, &c, error));
+    CHECK(strcmp(error, "同轨音符重叠") == 0 && c.notes == old_notes);
+    chart_free(&c);
+}
+/**
  * @brief 验证项目交付的曲库、六份谱面及非法谱面。
  * 参数：l 为输出曲库，root 为 assets/songs 的实际路径。
  * 返回：无返回值，测试成功后 l 保持已加载可供后续用例使用。
- * 说明：检查两首歌三档数量及 SHA-256 字符长度，对每份谱面执行完整满分回放；另外构造重叠轨道、重复 ID
- * 和缺连锁分组等失败输入。
+ * 说明：检查两首歌三档数量、SHA-256 字符长度、WAV 时长、音符 ID 和分组，对每份谱面执行完整满分回放；
+ * 另外检查按需加载、缺失谱面及重叠轨道。
  */
 static void resource_tests(Library *l, const char *root) {
     CHECK(library_load(l, root, error));
@@ -198,25 +329,23 @@ static void resource_tests(Library *l, const char *root) {
     for (int s = 0; s < l->count; s++)
         for (int d = 0; d < 3; d++) {
             Chart c = {0};
+            char path[NC_PATH];
             CHECK(chart_load(l, s, d, &c, error));
             CHECK(c.count == expected[s][d]);
             CHECK(strlen(c.hash) == 64 && strlen(c.audio_hash) == 64);
+            CHECK(snprintf(path, sizeof(path), "%s/%s", root, l->songs[s].charts[d]) <
+                  (int)sizeof(path));
+            check_note_groups(path, &c);
+            CHECK(snprintf(path, sizeof(path), "%s/%s", root, l->songs[s].audio) < (int)sizeof(path));
+            check_wav(path, c.duration);
             replay(&c);
             chart_free(&c);
         }
     Chart c = {0};
     CHECK(!chart_load(l, 99, 0, &c, error));
     CHECK(!chart_load(l, 0, 3, &c, error));
-    Note notes[] = {{1, 0, 1000, 2000, -1, -1, HOLD}, {2, 0, 1500, 1500, -1, -1, TAP}};
-    c = tiny(notes, 2);
-    CHECK(!chart_validate(&c, error));
-    notes[1].lane = 1;
-    notes[1].id = 1;
-    CHECK(!chart_validate(&c, error));
-    notes[1].id = 2;
-    notes[1].type = CHAIN;
-    CHECK(!chart_validate(&c, error));
-    puts("PASS all six charts, WAV/SHA-256 checks and complete perfect replays");
+    chart_loading_tests(l);
+    puts("PASS all six charts, group/WAV/SHA-256 checks, lazy loading and complete perfect replays");
 }
 /**
  * @brief 构造一条完整全 Perfect 的存储测试记录。
@@ -244,7 +373,7 @@ static Record record_make(const Chart *c, const char *name) {
  * 参数：l 为可用曲库，测试使用其中小星星 Easy。
  * 返回：无返回值，CHECK 失败结束进程。
  * 说明：在测试程序旁创建唯一 test-data
- * 子目录，覆盖中文账号、密码空格、重复注册、设置往返、幂等成绩、账号最佳成绩及模式隔离；主动损坏测试文件后验证拒绝覆盖，不触碰用户
+ * 子目录，覆盖中文账号、密码空格、重复注册、读取旧版设置、幂等成绩、账号最佳成绩及模式隔离；主动损坏测试文件后验证拒绝覆盖，不触碰用户
  * AppData 数据。
  */
 static void storage_tests(const Library *l) {
@@ -259,8 +388,10 @@ static void storage_tests(const Library *l) {
     CHECK(!account_action(root, "测试玩家", "pw", true, error));
     CHECK(!account_action(root, "bad\nname", "pw", true, error));
     CHECK(!account_action(root, "", "pw", true, error));
-    Settings settings = {45, 70, -125}, read;
-    CHECK(settings_save(root, &settings, error));
+    Settings read;
+    snprintf(path, sizeof(path), "%s/settings.json", root);
+    const char legacy_settings[] = "{\"schemaVersion\":1,\"music\":45,\"effect\":70,\"offset\":-125}";
+    CHECK(nc_atomic(path, legacy_settings, sizeof(legacy_settings) - 1, error));
     CHECK(settings_load(root, &read, error));
     CHECK(read.music == 45 && read.offset == -125);
     Chart c = {0};
@@ -341,7 +472,10 @@ static void audio_tests(const Library *lib) {
     Sleep(100);
     CHECK(abs(audio_position() - paused) <= 35);
     CHECK(audio_resume(error));
-    Sleep(100);
+    /* Windows MCI 恢复后可能要等待音频设备再次推进播放位置。 */
+    int64_t resume_deadline = nc_now() + 1000;
+    while (audio_position() <= paused + 30 && nc_now() < resume_deadline)
+        Sleep(20);
     CHECK(audio_position() > paused + 30);
     audio_close();
     CHECK(audio_position() == -1);
@@ -413,7 +547,7 @@ static void healthy(Network *h, Network *g) {
  * 参数：l 为有效曲库，提供资源校验与完整统计的基准。
  * 返回：无返回值，所有断言完成后关闭 socket 并配对 Winsock 清理。
  * 说明：建立房主/客人并同步时钟，跑两轮准备、开局、比分与结果确认，中间含
- * rematch；还覆盖重复提交、断线、非法地址和原始 socket 超大帧。仅证明本机网络流程，不代表实体双机声卡起播一致。
+ * rematch；交替改变双方完赛先后顺序，检查复赛紧随确认时仍能观察到成绩。还覆盖重复提交、断线、非法地址及超大帧。
  */
 static void network_tests(const Library *l) {
     CHECK(net_init(error));
@@ -455,21 +589,40 @@ static void network_tests(const Library *l) {
         net_stats(g, &b, 33000);
         pump(h, g, 30);
         CHECK(h->peer_stats.finalized == c.count);
-        CHECK(net_finish(h, &a, error));
-        CHECK(net_finish(g, &b, error));
-        pump(h, g, 100);
+        Network *first = round ? g : h, *second = round ? h : g;
+        const Stats *first_score = round ? &b : &a, *second_score = round ? &a : &b;
+        CHECK(net_finish(first, first_score, error));
+        CHECK(!net_finish(first, first_score, error));
+        pump(h, g, 50);
+        CHECK(first->state == NET_WAIT && second->state == NET_PLAY && second->peer_finished);
+        CHECK(net_finish(second, second_score, error));
+        if (round == 0) {
+            int64_t deadline = nc_now() + 500;
+            while (h->state == NET_WAIT && nc_now() < deadline) {
+                net_poll(g);
+                net_poll(h);
+                Sleep(1);
+            }
+            CHECK(h->state == NET_DONE && g->state == NET_WAIT);
+            CHECK(net_rematch(h, error));
+            net_poll(h);
+            deadline = nc_now() + 500;
+            while (g->state == NET_WAIT && nc_now() < deadline) {
+                net_poll(g);
+                Sleep(1);
+            }
+        } else
+            pump(h, g, 100);
         healthy(h, g);
         CHECK(h->confirmed && g->confirmed && h->state == NET_DONE && g->state == NET_DONE);
         CHECK(stats_result(&h->peer_stats, c.count).score == (round ? 700000 : 1000000));
         if (round == 0) {
-            CHECK(net_rematch(h, error));
             pump(h, g, 100);
             healthy(h, g);
             CHECK(h->state == NET_ROOM && g->state == NET_ROOM && !h->ready && !g->ready &&
                   !h->configured && !g->configured);
         }
     }
-    CHECK(!net_finish(h, &h->local_final, error));
     net_leave(h);
     pump(h, g, 20);
     net_leave(g);

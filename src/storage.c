@@ -111,11 +111,11 @@ bool account_action(const char *root, const char *name, const char *password, bo
  * @brief 读取设置，出错时保留默认配置供程序启动。
  * 参数：root 为数据目录；s 为非空输出；error 可空。
  * 返回：文件不存在或已成功读取时返回 true；文件损坏、未知版本或字段非法返回 false。
- * 说明：先写默认音乐/音效音量 70、偏移 0；限制音量 0—100、偏移 ±200ms。只支持版本
- * 1，不覆盖原文件；应用层根据失败结果禁止保存以保留问题现场。
+ * 说明：默认音乐音量 70、偏移 0；限制音量 0—100、偏移 ±200ms。读取版本 1 的音乐音量和校准偏移，
+ * 保留原文件中的旧音效字段。
  */
 bool settings_load(const char *root, Settings *s, char *error) {
-    *s = (Settings){70, 70, 0};
+    *s = (Settings){.music = 70, .offset = 0};
     char path[NC_PATH];
     filename(path, root, "settings.json");
     if (!nc_exists(path))
@@ -127,34 +127,11 @@ bool settings_load(const char *root, Settings *s, char *error) {
     Settings temp;
     bool ok = json_int(o, "schemaVersion", 1, 1, &schema) &&
               json_int(o, "music", 0, 100, &temp.music) &&
-              json_int(o, "effect", 0, 100, &temp.effect) &&
               json_int(o, "offset", -200, 200, &temp.offset);
     cJSON_Delete(o);
     if (ok)
         *s = temp;
     return ok || nc_error(error, "设置文件损坏或版本未知，保留原文件并使用默认值");
-}
-/**
- * @brief 将合法设置原子写入用户目录。
- * 参数：root 为数据目录；s 为借用设置；error 可空。
- * 返回：范围检查、建目录与 JSON 保存全部成功返回 true，否则返回 false。
- * 说明：写入 schemaVersion=1 和三个设置值；不自行读取或判断已有文件是否损坏，应用层应先遵守
- * settings_load 的可写判断。
- */
-bool settings_save(const char *root, const Settings *s, char *error) {
-    if (s->music < 0 || s->music > 100 || s->effect < 0 || s->effect > 100 || s->offset < -200 ||
-        s->offset > 200)
-        return nc_error(error, "设置值超出范围");
-    char path[NC_PATH];
-    filename(path, root, "settings.json");
-    cJSON *o = cJSON_CreateObject();
-    cJSON_AddNumberToObject(o, "schemaVersion", 1);
-    cJSON_AddNumberToObject(o, "music", s->music);
-    cJSON_AddNumberToObject(o, "effect", s->effect);
-    cJSON_AddNumberToObject(o, "offset", s->offset);
-    bool ok = nc_mkdir(root, error) && json_save(path, o, error);
-    cJSON_Delete(o);
-    return ok;
 }
 /**
  * @brief 从 JSON 解析一条完整、有效的历史成绩。
