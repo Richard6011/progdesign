@@ -16,6 +16,5 @@
     "QT_PLUGIN_PATH": "${workspaceFolder}/.local/qt/plugins"
   },
   "C_Cpp.clang_format_style": "file",
-  "editor.defaultFormatter": "ms-vscode.cpptools",
-  "cmake.ctestPath": "${workspaceFolder}/.local/cmake/bin/ctest.exe"
+  "editor.defaultFormatter": "ms-vscode.cpptools"
 }

@@ -2,6 +2,8 @@ build/
 out/
 *.user
 *.tmp
-# 本机工具目录链接与临时测试账号，不同步到另一台电脑。
 .local/
 CMakeUserPresets.json
+/accounts.json
+/records.json
+/settings.json

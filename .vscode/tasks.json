@@ -21,22 +21,6 @@
       }
     },
     {
-      "label": "音符碰撞 C：测试",
-      "type": "process",
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        "${workspaceFolder}/tools/Development.ps1",
-        "-Action",
-        "Test"
-      ],
-      "problemMatcher": "$gcc",
-      "group": "test"
-    },
-    {
       "label": "音符碰撞 C：运行",
       "type": "process",
       "command": "powershell",

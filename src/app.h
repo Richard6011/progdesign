@@ -30,13 +30,12 @@ typedef enum {
     ACT_PLAY,
     ACT_HOST,
     ACT_JOIN,
-    ACT_READY,
     ACT_NET_START,
     ACT_PAUSE,
     ACT_RESUME,
     ACT_RESTART,
     ACT_ABORT,
-    ACT_REMATCH,
+    ACT_LEAVE_ROOM,
     ACT_LOGOUT,
     ACT_RANK_PREV,
     ACT_RANK_NEXT
@@ -61,18 +60,7 @@ typedef struct {
         addresses[512];
     Button buttons[96];
     int button_count, mx, my;
-    int64_t quit_at;
 } App;
-/**
- * @brief 按当前页面生成一帧界面与新的按钮命中表。
- * 返回：无返回值；清零并重建按钮表，最后提交 Qt 离屏画布。
- * 详见：ui.c 的同名函数定义（含参数、步骤及边界说明）。
- */
 void ui_render(App *a);
-/**
- * @brief 把客户区点击坐标映射到上一帧登记的按钮动作。
- * 返回：无返回值；命中则写动作及附参，无命中写 ACT_NONE 和 0。
- * 详见：ui.c 的同名函数定义（含参数、步骤及边界说明）。
- */
 void ui_action_at(App *a, int x, int y, Action *action, int *value);
 #endif

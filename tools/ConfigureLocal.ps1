@@ -1,6 +1,4 @@
-﻿<# 为本机工具建立目录链接。公共配置只引用 .local，不保存本机用户名和安装路径。
-   换电脑后再运行一次即可；目录链接和测试数据由 Git 忽略，无需管理员权限。 #>
-param(
+﻿param(
     [string]$MinGWRoot = '',
     [string]$QtRoot = '',
     [string]$CMakeRoot = '',
@@ -11,7 +9,6 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $localRoot = Join-Path $projectRoot '.local'
 New-Item -ItemType Directory -Path $localRoot -Force | Out-Null
 
-# 显式参数优先，常用安装目录其次；找不到就说明需要传入哪个工具目录。
 function Find-Root($Explicit, $Candidates, $Executable) {
     foreach ($candidate in @($Explicit) + $Candidates) {
         if ($candidate -and (Test-Path -LiteralPath (Join-Path $candidate $Executable))) {
@@ -21,7 +18,6 @@ function Find-Root($Explicit, $Candidates, $Executable) {
     throw "Cannot find $Executable. Pass its installation root to ConfigureLocal.ps1."
 }
 
-# 不替换已有目录或不同目标的链接，保留用户自行配置的工具。
 function Add-ToolLink($Name, $Root) {
     $link = Join-Path $localRoot $Name
     if (Test-Path -LiteralPath $link) {

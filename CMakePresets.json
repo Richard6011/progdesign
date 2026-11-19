@@ -38,21 +38,5 @@
       "name": "c-release",
       "configurePreset": "c-release"
     }
-  ],
-  "testPresets": [
-    {
-      "name": "c-debug",
-      "configurePreset": "c-debug",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "c-release",
-      "configurePreset": "c-release",
-      "output": {
-        "outputOnFailure": true
-      }
-    }
   ]
 }

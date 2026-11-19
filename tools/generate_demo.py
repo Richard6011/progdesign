@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Generate the project's original synthetic demo track and three playable charts."""
-
 import json
 import math
 import struct
@@ -17,37 +14,18 @@ BEAT_SECONDS = 60.0 / BPM
 
 
 def envelope(position: float, length: float) -> float:
-    """计算合成音符的起音和释音包络。
-
-    参数：position 是音符内已播放秒数，length 为音符总秒数；调用者保证非负。
-    返回：返回起音增益与释音增益的乘积。
-    说明：起音 12ms、释音 35ms；短音符的两个区间可以重叠。不读写文件，也不修改音频样本。
-    """
     attack = min(1.0, position / 0.012)
     release = min(1.0, max(0.0, length - position) / 0.035)
     return attack * release
 
 
 def note_tone(frequency: float, position: float, length: float) -> float:
-    """计算单个合成音符在某一时刻的样本。
-
-    参数：frequency 为 Hz，position/length 为秒；输入应为有效音符的非负时刻和时长。
-    返回：返回包络调制后的浮点振幅。
-    说明：将基频正弦与 0.22 倍二次谐波相加，再乘 0.15 总增益；不进行 PCM 量化或最终限幅，这些在混音完成后处理。
-    """
     env = envelope(position, length)
     return env * (math.sin(2 * math.pi * frequency * position)
                   + 0.22 * math.sin(4 * math.pi * frequency * position)) * 0.15
 
 
 def synthesize_audio() -> None:
-    """生成霓虹脉冲的完整本地 WAV 音频。
-
-    参数：无参数，使用模块中的路径、采样率、时长及 BPM 常量。
-    返回：返回 None，写入 neon-pulse.wav；文件系统错误向上传播。
-    说明：按 120 BPM 合成和弦、琶音、旋律及鼓点，持续 36 秒；混合后限幅并编码为 44.1kHz、双声道、16bit
-    小端 PCM。创建歌曲目录并覆盖同名文件，不使用随机数。
-    """
     sample_count = SAMPLE_RATE * DURATION_SECONDS
     samples = bytearray()
     progression = [(110.00, 164.81, 196.00), (87.31, 130.81, 164.81),
@@ -64,7 +42,6 @@ def synthesize_audio() -> None:
         sound = 0.035 * math.sin(2 * math.pi * root * 0.5 * time_s)
         sound += 0.018 * math.sin(2 * math.pi * third * time_s)
 
-        # A bright eighth-note arpeggio makes the pulse easy to hear while playing.
         arpeggio_step = int(beat_position * 2) % 8
         frequency = (root, third, fifth, third, root * 2, fifth, third * 2, fifth)[arpeggio_step]
         local = (beat_position * 2) % 1 * BEAT_SECONDS / 2
@@ -74,7 +51,6 @@ def synthesize_audio() -> None:
         if (bar % 2 == 1) and int(beat_position * 2) % 4 == 1:
             sound += note_tone(melody_frequency, local, BEAT_SECONDS / 2) * 0.15
 
-        # Kick on beats 1 and 3, a short snare on 2 and 4, and a quiet offbeat hat.
         if phase < 0.045 and int(beat_in_bar) in (0, 2):
             decay = math.exp(-phase * 30)
             sound += 0.34 * decay * math.sin(2 * math.pi * (58 - 18 * phase) * phase)
@@ -100,14 +76,6 @@ def synthesize_audio() -> None:
 
 def add_note(notes: list, available: list, note_id: int, kind: str, time_ms: int,
              duration_ms: int = 0, group_id: int = -1) -> int:
-    """选择空闲轨道并加入一个短音符、长按或连锁节点。
-
-    参数：notes/available 是原地修改的列表；note_id 为新 ID；kind
-    为类型；time_ms/duration_ms 为毫秒；group_id 为连锁组。
-    返回：返回下一个可用 ID；无轨道时抛 RuntimeError。
-    说明：只选择距该轨最近占用结束至少 200ms 的轨道，用 ID
-    与时间确定性选轨。长按占用至尾部，其余占用至头部；连锁节点记录 chainId，不负责检查组内节点数。
-    """
     possible = [lane for lane in range(4) if time_ms >= available[lane] + 200]
     if not possible:
         raise RuntimeError(f"No free lane at {time_ms} ms ({kind})")
@@ -126,14 +94,6 @@ def add_note(notes: list, available: list, note_id: int, kind: str, time_ms: int
 
 def add_chord(notes: list, available: list, note_id: int, time_ms: int,
               lanes_needed: int, chord_id: int) -> int:
-    """在互不相同的空闲轨道加入同时按键组。
-
-    参数：notes/available 原地修改；note_id 为首个 ID；time_ms
-    为毫秒；lanes_needed 为合法成员数量；chord_id 为组号。
-    返回：返回本组之后的下一个 ID；空闲轨道不足抛 RuntimeError。
-    说明：按至少 200ms 间距筛选轨道，从确定性起点旋转候选列表。每个成员有独立 ID 和相同
-    chordId/timeMs，更新各轨占用时间，不合并成单一判定单元。
-    """
     possible = [lane for lane in range(4) if time_ms >= available[lane] + 200]
     if len(possible) < lanes_needed:
         raise RuntimeError(f"No {lanes_needed}-lane chord available at {time_ms} ms")
@@ -148,13 +108,6 @@ def add_chord(notes: list, available: list, note_id: int, time_ms: int,
 
 
 def make_chart(difficulty: str) -> dict:
-    """根据指定难度构造霓虹脉冲谱面。
-
-    参数：difficulty 必须是 Easy、Normal、Hard 之一。
-    返回：返回可 JSON 序列化的谱面字典；非法难度抛 KeyError，排轨失败抛 RuntimeError。
-    说明：从 3000ms 开始编排 16 个小节，按难度决定节奏密度和和弦成员数，加入长按及连锁。三档接近时间为
-    2200/1800/1400ms；最后按时间、轨道、ID 排序，不写磁盘。
-    """
     settings = {
         "Easy": {"approach": 2200, "steps": (0, 500, 1000, 1500), "chord": 2},
         "Normal": {"approach": 1800, "steps": (0, 250, 750, 1250, 1750), "chord": 2},
@@ -203,13 +156,6 @@ def make_chart(difficulty: str) -> dict:
 
 
 def main() -> None:
-    """重新生成霓虹脉冲音频、三份谱面并更新曲库索引。
-
-    参数：无参数，输出位置相对于本脚本所在项目确定。
-    返回：返回 None；JSON 解析或文件写入等异常直接向上传播。
-    说明：先合成 WAV，再以 UTF-8
-    保存三个难度。更新索引时替换霓虹脉冲条目并保留小星星等其他歌曲；生成不是多文件事务，中途失败可留下部分已更新资源。
-    """
     synthesize_audio()
     for difficulty in ("Easy", "Normal", "Hard"):
         chart = make_chart(difficulty)
@@ -233,7 +179,6 @@ def main() -> None:
         existing = json.loads(index_path.read_text(encoding="utf-8"))
         existing_songs = [song for song in existing.get("songs", [])
                          if song.get("id") != "neon-pulse"]
-    # Preserve separately added songs such as twinkle-star when rebuilding the demo assets.
     index = {"schemaVersion": 1, "songs": [demo_song] + existing_songs}
     index_path.write_text(
         json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
